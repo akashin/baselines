@@ -170,3 +170,12 @@ def wrap_deepmind(env, episode_life=True, clip_rewards=True):
     if clip_rewards:
         env = ClipRewardEnv(env)
     return env
+
+def wrap_ue4(env, clip_rewards=True):
+    """Configure environment for DeepMind-style Atari.
+
+    Note: this does not include frame stacking!"""
+    env = WarpFrame(env)
+    if clip_rewards:
+        env = ClipRewardEnv(env)
+    return env

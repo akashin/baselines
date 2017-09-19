@@ -1,0 +1,1 @@
+/home/acid/Repos/HSE_AI_Labs/Lab_5/Content/Scripts/remote_env.py

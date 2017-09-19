@@ -69,7 +69,7 @@ class Model(object):
 
         def save(save_path):
             ps = sess.run(params)
-            make_path(save_path)
+            make_path(osp.dirname(save_path))
             joblib.dump(ps, save_path)
 
         def load(load_path):
@@ -172,6 +172,10 @@ def learn(policy, env, seed, nsteps=5, nstack=4, total_timesteps=int(80e6), vf_c
         policy_loss, value_loss, policy_entropy = model.train(obs, states, rewards, masks, actions, values)
         nseconds = time.time()-tstart
         fps = int((update*nbatch)/nseconds)
+
+        if update % (log_interval * 1000) == 0:
+            model.save("/home/acid/Repos/baselines/log_dir/models/model_{}.bz2".format(update))
+
         if update % log_interval == 0 or update == 1:
             ev = explained_variance(values, rewards)
             logger.record_tabular("nupdates", update)
