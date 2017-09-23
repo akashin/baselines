@@ -30,3 +30,5 @@ src
 
 *.egg-info
 .cache
+
+results/

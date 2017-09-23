@@ -101,7 +101,7 @@ if __name__ == '__main__':
     np.random.seed(42)
     tf.set_random_seed(7)
 
-    log_dir = "./multi_deepq_{}".format(args.batch_size)
+    log_dir = "./results/multi_deepq_{}".format(args.batch_size)
     logger.configure(dir=log_dir)
     print("Running training with arguments: {} and log_dir: {}".format(args, log_dir))
 
