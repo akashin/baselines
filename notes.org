@@ -1,0 +1,123 @@
+* CartPole-v0
+** Playing and training
+Threads, steps/s
+1, 540
+2, 447
+4, 275
+
+** playing + inference
+Threads, steps/s
+1, 1770
+2, 1750
+4, 900 (clearly underutilized processor, Load avg: 2.5)
+8, 490 (same story with processor utilization)
+
+
+** External env, playing + inference
+Threads, steps/s
+1, 1450
+8, 406 (underutilized processor, again)
+
+
+Hmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+
+** External env, playing same action, no inference
+Threads, steps/s
+1, 10000
+2, 8650
+4, 4200
+8, 2000
+
+Maybe worker is too complicated. Let's see how env scales on it's own across
+threads.
+
+
+** StupidWorker, external, no inference, replay table nothing, always same action 0.
+Threads, steps/s
+1, 14200
+2, 12700
+4, 7900
+8, 3800
+
+
+We spend too much time in Python.
+** StupidWorker, external, no rewards tracking.
+Threads, steps/s
+1, 15000
+8, 3840
+
+** StupidWorker, external, in separate processes
+for i in {0..7}; do python3 -m baselines.multi_deepq.experiments.custom_cartpole --worker_count=1 &; done
+
+Some of them crashed. Let's disable CUDA.
+
+Threads, steps/s
+1, 14500
+2, 12700
+4, 11200
+8, 6500 (all threads are fully utilized, it's bottlenecked in CPU now)
+
+** StupidWorker, in separate processes, no external env
+Threads, steps/s
+1, 194000
+2, 192000
+4, 183000
+8, 95000
+
+** StupidWorker, in separate processes, with thread affinity, no external env
+Threads, steps/s
+1, 197000
+2, 197000
+4, 187000
+8, 95000
+
+Conclusion - use multiple processes, use local env (10x speedup).
+I need to implement distributed version.
+
+
+** StupidWorker, in same process, no external env
+Threads, steps/s
+1, 197000
+2, 102000
+4, 28000
+8, 20000
+
+
+* Pong-v0
+
+** StupidWorker, separate process
+Processes, steps/s
+1, 2440
+2, 2300
+4, 2300
+8, 1260
+
+** StupidWorker, separate process, thread affinity
+Processes, steps/s
+1, 2400
+2, 2400
+4, 2320
+8, 1260
+
+** StupidWorker, threads, no thread affinity
+Threads, steps/s
+1, 2400
+2, 2350
+4, 2250
+8, 1290
+
+** Worker, threads, no training, no inference
+Threads, steps/s
+1, 2240
+2, 2200
+4, 2050
+
+** Worker, processes, no training, no inference
+Processes, steps/s
+4, 2150
+
+* Boxing-v0
+
+** StupidWorker, separate process
+Processes, steps/s
+1, 1750
