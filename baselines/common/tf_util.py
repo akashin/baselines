@@ -215,8 +215,10 @@ def minimize_and_clip(optimizer, objective, var_list, clip_val=10):
 # Global session
 # ================================================================
 
-def get_session():
+def get_session(session=None):
     """Returns recently made Tensorflow session"""
+    if session:
+        return session
     return tf.get_default_session()
 
 
@@ -236,10 +238,10 @@ def single_threaded_session():
 ALREADY_INITIALIZED = set()
 
 
-def initialize():
+def initialize(session=None):
     """Initialize all the uninitialized variables in the global scope."""
     new_variables = set(tf.global_variables()) - ALREADY_INITIALIZED
-    get_session().run(tf.variables_initializer(new_variables))
+    get_session(session).run(tf.variables_initializer(new_variables))
     ALREADY_INITIALIZED.update(new_variables)
 
 
@@ -420,7 +422,7 @@ class _Function(object):
         elif is_placeholder(inpt):
             feed_dict[inpt] = value
 
-    def __call__(self, *args, **kwargs):
+    def __call__(self, *args, session=None, **kwargs):
         assert len(args) <= len(self.inputs), "Too many arguments provided"
         feed_dict = {}
         # Update the args
@@ -442,7 +444,7 @@ class _Function(object):
         # Update feed dict with givens.
         for inpt in self.givens:
             feed_dict[inpt] = feed_dict.get(inpt, self.givens[inpt])
-        results = get_session().run(self.outputs_update, feed_dict=feed_dict)[:-1]
+        results = get_session(session=session).run(self.outputs_update, feed_dict=feed_dict)[:-1]
         if self.check_nan:
             if any(np.isnan(r).any() for r in results):
                 raise RuntimeError("Nan detected")
