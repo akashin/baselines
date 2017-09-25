@@ -15,7 +15,9 @@ import argparse
 
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--thread_count", type=int, default=1)
+    parser.add_argument("--tf_thread_count", type=int, default=1)
     parser.add_argument("--process_count", type=int, default=1)
     parser.add_argument("--env", type=str, default='Pong-v0')
     args = parser.parse_args()
@@ -25,17 +27,20 @@ def main():
         print('Cleaning up processes')
         for process in processes:
             print("Killing {}".format(process.proc.pid))
-            kill["-9", process.proc.pid].run()
+            if not process.ready():
+                kill["-9", process.proc.pid].run()
 
     atexit.register(cleanup_processes)
 
-    local.env["CUDA_VISIBLE_DEVICES"] = ""
+    # local.env["CUDA_VISIBLE_DEVICES"] = ""
 
     for i in range(args.process_count):
         print("Starting process {}".format(i))
-        f = python3["-m", "baselines.multi_deepq.experiments.custom_cartpole",
+        f = python3["-m", "baselines.multi_deepq.experiments.doom",
+                "--batch_size={}".format(args.batch_size),
                 "--worker_count={}".format(args.thread_count),
-                "--env_name={}".format(args.env)] & BG(stdout=sys.stdout)
+                "--tf_thread_count={}".format(args.tf_thread_count),
+                "--env_name={}".format(args.env)] & BG(stdout=sys.stdout, stderr=sys.stderr)
         #taskset -cp $i $pid
         processes.append(f)
 

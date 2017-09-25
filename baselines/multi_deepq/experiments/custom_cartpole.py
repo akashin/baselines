@@ -1,117 +1,24 @@
 import argparse
 import gym
-import itertools
 import numpy as np
 import tensorflow as tf
-import tensorflow.contrib.layers as layers
 
 import threading
-
-from timeit import default_timer as timer
 
 import baselines.common.tf_util as U
 
 from baselines import logger
-from baselines import multi_deepq
-from baselines.multi_deepq import wrappers
-from baselines.multi_deepq.replay_buffer import ReplayBuffer
-from baselines.common.schedules import LinearSchedule
+
+from baselines.multi_deepq.models import linear_model, conv_model
+from baselines.multi_deepq.workers import Worker, StupidWorker
+
+from baselines.common.atari_wrappers import wrap_deepmind
+from baselines.common.atari_wrappers_deprecated import wrap_dqn
 
 
-def linear_model(inpt, num_actions, scope, reuse=False):
-    """This model takes as input an observation and returns values of all actions."""
-    with tf.variable_scope(scope, reuse=reuse):
-        out = inpt
-        out = layers.fully_connected(out, num_outputs=64, activation_fn=tf.nn.tanh)
-        out = layers.fully_connected(out, num_outputs=num_actions, activation_fn=None)
-        return out
-
-
-class Worker(object):
-    def __init__(self, is_chief, env, model):
-        self.is_chief = is_chief
-        self.env = env
-        # self.act, self.train, self.update_target, self.debug = multi_deepq.build_train(
-                # make_obs_ph=lambda name: U.BatchInput(env.observation_space.shape, name=name),
-                # q_func=model,
-                # num_actions=env.action_space.n,
-                # optimizer=tf.train.AdamOptimizer(learning_rate=5e-4),
-                # reuse=(not is_chief),
-                # )
-
-        # Create the replay buffer
-        self.replay_buffer = ReplayBuffer(50000)
-        # Create the schedule for exploration starting from 1 (every action is random) down to
-        # 0.02 (98% of actions are selected according to values predicted by the model).
-        self.exploration = LinearSchedule(schedule_timesteps=10000, initial_p=1.0, final_p=0.02)
-
-    def run(self, session, coord):
-        episode_rewards = [0.0]
-        obs = self.env.reset()
-
-        start_time = timer()
-        for t in itertools.count():
-            # Take action and update exploration to the newest value
-            # action = self.act(obs[None], update_eps=self.exploration.value(t), session=session)[0]
-            action = 0
-            new_obs, rew, done, _ = self.env.step(action)
-            # Store transition in the replay buffer.
-            self.replay_buffer.add(obs, action, rew, new_obs, float(done))
-            obs = new_obs
-
-            episode_rewards[-1] += rew
-            if done:
-                obs = self.env.reset()
-                episode_rewards.append(0)
-
-            is_solved = len(episode_rewards) > 100 and np.mean(episode_rewards[-101:-1]) >= 200
-            if self.is_chief and is_solved:
-                # Show off the result
-                self.env.render()
-            else:
-                # Minimize the error in Bellman's equation on a batch sampled from replay buffer.
-                # if t > 1000:
-                if False:
-                    obses_t, actions, rewards, obses_tp1, dones = self.replay_buffer.sample(args.batch_size)
-                    self.train(obses_t, actions, rewards, obses_tp1, dones, np.ones_like(rewards),
-                            session=session)
-                    # Update target network periodically.
-                # if self.is_chief and t % 250 == 0:
-                if False:
-                    self.update_target(session=session)
-
-            if self.is_chief and done and len(episode_rewards) % 100 == 0:
-                logger.record_tabular("steps", t)
-                logger.record_tabular("episodes", len(episode_rewards))
-                logger.record_tabular("mean episode reward", round(np.mean(episode_rewards[-101:-1]), 1))
-                logger.record_tabular("time elapsed", timer() - start_time)
-                logger.record_tabular("steps/s", t / (timer() - start_time))
-                logger.record_tabular("% time spent exploring", int(100 * self.exploration.value(t)))
-                logger.dump_tabular()
-
-
-class StupidWorker(object):
-    def __init__(self, is_chief, env, model):
-        self.env = env
-        self.is_chief = is_chief
-
-    def run(self, session, coord):
-        _ = self.env.reset()
-
-        start_time = timer()
-        for t in itertools.count():
-            # Take action and update exploration to the newest value
-            # action = self.act(obs[None], update_eps=self.exploration.value(t), session=session)[0]
-            action = 0
-            _, _, done, _ = self.env.step(action)
-            if done:
-                obs = self.env.reset()
-
-            if self.is_chief and t % 100000 == 0:
-                logger.record_tabular("steps", t)
-                logger.record_tabular("time elapsed", timer() - start_time)
-                logger.record_tabular("steps/s", t / (timer() - start_time))
-                logger.dump_tabular()
+def is_atari(env_name):
+    return env_name.startswith('Pong')
+    # return env_name in ['Pong-v0', 'PongNoFrameskip-v4', 'PongDeterministic-v4']
 
 
 def make_env(env_name, seed):
@@ -119,38 +26,46 @@ def make_env(env_name, seed):
     def make_gym_env():
         env = gym.make(env_name)
         env.seed(seed)
+        if is_atari(env_name):
+            env = wrap_deepmind(env)
         return env
 
     return make_gym_env()
-    # return wrappers.ExternalProcess(make_gym_env)
 
 
-MODE = 'no_training'
+MODE = 'training'
+GAME = 'cartpole'
 
 
-if __name__ == '__main__':
+def main():
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--batch_size', help='Batch size', type=int, default=32)
     parser.add_argument('--worker_count', help='Batch size', type=int, default=1)
+    parser.add_argument('--tf_thread_count', help='TensorFlow threads count', type=int, default=1)
     parser.add_argument('--env_name', help='Batch size', type=str, default='CartPole-v0')
     args = parser.parse_args()
 
     np.random.seed(42)
     tf.set_random_seed(7)
 
-    log_dir = "./results/multi_deepq_{}_{}_batch_size_{}_worker_count_{}".format(
-            MODE, args.env_name, args.batch_size, args.worker_count)
+    log_dir = "./results/multi_deepq_{}_{}_{}_batch_size_{}_worker_count_{}_tf_thread_count_{}".format(
+            GAME, MODE, args.env_name, args.batch_size, args.worker_count, args.tf_thread_count)
     logger.configure(dir=log_dir)
     print("Running training with arguments: {} and log_dir: {}".format(args, log_dir))
 
     coord = tf.train.Coordinator()
 
+    if is_atari(args.env_name):
+        model = conv_model
+    else:
+        model = linear_model
+
     workers = []
     for i in range(args.worker_count):
-        workers.append(Worker(i == 0, make_env(args.env_name, i), linear_model))
-        # workers.append(StupidWorker(i == 0, make_env(args.env_name, i), linear_model))
+        workers.append(Worker(i == 0, make_env(args.env_name, i), model, args.batch_size))
+        # workers.append(StupidWorker(i == 0, make_env(args.env_name, i), model))
 
-    with U.make_session(1) as session:
+    with U.make_session(args.tf_thread_count) as session:
         U.initialize(session=session)
 
         threads = []
@@ -161,3 +76,8 @@ if __name__ == '__main__':
             threads.append(thread)
 
         coord.join(threads)
+
+
+if __name__ == '__main__':
+    main()
+

@@ -2,6 +2,36 @@ import tensorflow as tf
 import tensorflow.contrib.layers as layers
 
 
+def linear_model(inpt, num_actions, scope, reuse=False):
+    """This model takes as input an observation and returns values of all actions."""
+    with tf.variable_scope(scope, reuse=reuse):
+        out = inpt
+        out = layers.fully_connected(out, num_outputs=64, activation_fn=tf.nn.tanh)
+        out = layers.fully_connected(out, num_outputs=num_actions, activation_fn=None)
+        return out
+
+
+def conv_model(img_in, num_actions, scope, reuse=False, layer_norm=False):
+    """As described in https://storage.googleapis.com/deepmind-data/assets/papers/DeepMindNature14236Paper.pdf"""
+    with tf.variable_scope(scope, reuse=reuse):
+        out = img_in
+        with tf.variable_scope("convnet"):
+            # original architecture
+            out = layers.convolution2d(out, num_outputs=32, kernel_size=8, stride=4, activation_fn=tf.nn.relu)
+            out = layers.convolution2d(out, num_outputs=64, kernel_size=4, stride=2, activation_fn=tf.nn.relu)
+            out = layers.convolution2d(out, num_outputs=64, kernel_size=3, stride=1, activation_fn=tf.nn.relu)
+        conv_out = layers.flatten(out)
+
+        with tf.variable_scope("action_value"):
+            value_out = layers.fully_connected(conv_out, num_outputs=512, activation_fn=None)
+            if layer_norm:
+                value_out = layer_norm_fn(value_out, relu=True)
+            else:
+                value_out = tf.nn.relu(value_out)
+            value_out = layers.fully_connected(value_out, num_outputs=num_actions, activation_fn=None)
+        return value_out
+
+
 def _mlp(hiddens, inpt, num_actions, scope, reuse=False, layer_norm=False):
     with tf.variable_scope(scope, reuse=reuse):
         out = inpt
