@@ -116,8 +116,32 @@ Threads, steps/s
 Processes, steps/s
 4, 2150
 
+** GPU training, 1 workers, 8 threads
+130 steps/s
+
+** GPU inference, 1 workers, 1 thread
+380 steps/s
+
+** CPU training, 1 workers, 8 threads
+25 steps/s
+
+** CPU training, 1 workers, 1 threads
+11 steps/s
+
+** CPU training, 1 workers, 1 threads, batch_size=1
+50 steps/s
+
+** CPU inference, 1 workers, 8 threads
+300 steps/s
+
+** CPU inference, 1 workers, 1 thread
+300 steps/s
+
 * Boxing-v0
 
 ** StupidWorker, separate process
 Processes, steps/s
 1, 1750
+
+
+
