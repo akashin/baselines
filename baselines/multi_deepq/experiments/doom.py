@@ -16,7 +16,7 @@ from ppaquette_gym_doom.wrappers.action_space import ToDiscrete
 from ppaquette_gym_doom.wrappers.observation_space import SetResolution
 
 from baselines.multi_deepq.models import linear_model, conv_model
-from baselines.multi_deepq.workers import Worker, StupidWorker
+from baselines.multi_deepq.workers import Worker, StupidWorker, Config
 from baselines.multi_deepq.wrappers import ExternalProcess
 
 
@@ -57,7 +57,8 @@ def make_env(env_name, seed):
         env_spec.id = env_name.split('/')[1]
         env = env_spec.make()
         env = SetResolution('160x120')(env)
-        env = PreprocessImage((SkipWrapper(4)(ToDiscrete("minimal")(env))))
+        env = PreprocessImage((SkipWrapper(4)(ToDiscrete("minimal")(env))),
+                width=80, height=80)
         return env
 
     # env = ExternalProcess(_make_env)
@@ -65,8 +66,8 @@ def make_env(env_name, seed):
     return env
 
 
-MODE = 'training'
-GAME = 'doom'
+def escaped(env_name):
+    return env_name.replace('/', '.')
 
 
 def main():
@@ -74,14 +75,18 @@ def main():
     parser.add_argument('--batch_size', help='Batch size', type=int, default=32)
     parser.add_argument('--worker_count', help='Worker count', type=int, default=1)
     parser.add_argument('--tf_thread_count', help='TensorFlow threads count', type=int, default=8)
-    parser.add_argument('--env_name', help='Batch size', type=str, default='CartPole-v0')
+    parser.add_argument('--env_name', help='Env name', type=str, default='CartPole-v0')
     args = parser.parse_args()
+
+    config = Config()
+    config.batch_size = args.batch_size
+    config.worker_count = args.worker_count
+    config.tf_thread_count = args.tf_thread_count
 
     np.random.seed(42)
     tf.set_random_seed(7)
 
-    log_dir = "./results/multi_deepq_{}_{}_{}_batch_size_{}_worker_count_{}_tf_thread_count_{}".format(
-            GAME, MODE, args.env_name, args.batch_size, args.worker_count, args.tf_thread_count)
+    log_dir = "./results/DQN_{}{}".format(escaped(args.env_name), config)
     logger.configure(dir=log_dir)
     print("Running training with arguments: {} and log_dir: {}".format(args, log_dir))
 
@@ -91,7 +96,7 @@ def main():
 
     workers = []
     for i in range(args.worker_count):
-        workers.append(Worker(i == 0, make_env(args.env_name, i), model, args.batch_size))
+        workers.append(Worker(i == 0, make_env(args.env_name, i), model, config))
         # workers.append(StupidWorker(i == 0, make_env(args.env_name, i), model))
 
     with U.make_session(args.tf_thread_count) as session:

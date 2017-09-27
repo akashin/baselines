@@ -1,11 +1,11 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 
 import logging
 
 from plumbum import local
 from plumbum import BG
 from plumbum import cli
-from plumbum.cmd import kill, python3
+from plumbum.cmd import kill, python
 
 import sys
 
@@ -36,7 +36,7 @@ def main():
 
     for i in range(args.process_count):
         print("Starting process {}".format(i))
-        f = python3["-m", "baselines.multi_deepq.experiments.doom",
+        f = python["-m", "baselines.multi_deepq.experiments.doom",
                 "--batch_size={}".format(args.batch_size),
                 "--worker_count={}".format(args.thread_count),
                 "--tf_thread_count={}".format(args.tf_thread_count),

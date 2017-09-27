@@ -143,5 +143,8 @@ Processes, steps/s
 Processes, steps/s
 1, 1750
 
+* DoomBasic-v0
 
+DQN is very sensitive to parameters.
 
+I know it trains with LR = 5e-4, BS = 32, Exploration = 500k, Replay = 50k
