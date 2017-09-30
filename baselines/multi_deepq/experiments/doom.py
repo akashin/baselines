@@ -75,6 +75,8 @@ def main():
     parser.add_argument('--batch_size', help='Batch size', type=int, default=32)
     parser.add_argument('--worker_count', help='Worker count', type=int, default=1)
     parser.add_argument('--tf_thread_count', help='TensorFlow threads count', type=int, default=8)
+    parser.add_argument('--learning_rate', help='Learning rate', type=float, default=5e-4)
+    parser.add_argument('--train_frequency', help='Train frequency', type=int, default=2)
     parser.add_argument('--env_name', help='Env name', type=str, default='CartPole-v0')
     args = parser.parse_args()
 
@@ -82,6 +84,8 @@ def main():
     config.batch_size = args.batch_size
     config.worker_count = args.worker_count
     config.tf_thread_count = args.tf_thread_count
+    config.learning_rate = args.learning_rate
+    config.train_frequency = args.train_frequency
 
     np.random.seed(42)
     tf.set_random_seed(7)
@@ -96,20 +100,22 @@ def main():
 
     workers = []
     for i in range(args.worker_count):
-        workers.append(Worker(i == 0, make_env(args.env_name, i), model, config))
+        workers.append(Worker(i == 0, make_env(args.env_name, i), model, config, should_render=False))
         # workers.append(StupidWorker(i == 0, make_env(args.env_name, i), model))
 
     with U.make_session(args.tf_thread_count) as session:
         U.initialize(session=session)
 
-        threads = []
-        for worker in workers:
-            worker_fn = lambda: worker.run(session, coord)
-            thread = threading.Thread(target=worker_fn)
-            thread.start()
-            threads.append(thread)
+        workers[0].run(session, coord)
 
-        coord.join(threads)
+        # threads = []
+        # for worker in workers:
+            # worker_fn = lambda: worker.run(session, coord)
+            # thread = threading.Thread(target=worker_fn)
+            # thread.start()
+            # threads.append(thread)
+
+        # coord.join(threads)
 
 
 if __name__ == '__main__':

@@ -1,11 +1,12 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 import logging
 
 from plumbum import local
 from plumbum import BG
 from plumbum import cli
-from plumbum.cmd import kill, python
+from plumbum.cmd import kill, python3
+import plumbum.commands.processes
 
 import sys
 
@@ -34,18 +35,37 @@ def main():
 
     # local.env["CUDA_VISIBLE_DEVICES"] = ""
 
-    for i in range(args.process_count):
-        print("Starting process {}".format(i))
-        f = python["-m", "baselines.multi_deepq.experiments.doom",
-                "--batch_size={}".format(args.batch_size),
-                "--worker_count={}".format(args.thread_count),
-                "--tf_thread_count={}".format(args.tf_thread_count),
-                "--env_name={}".format(args.env)] & BG(stdout=sys.stdout, stderr=sys.stderr)
-        #taskset -cp $i $pid
-        processes.append(f)
+    # batch_sizes = [args.batch_size]
+    # learning_rates = [5e-4]
+    # train_frequencies = [2]
 
-    for process in processes:
-        process.wait()
+    # batch_sizes = [32, 64, 128, 256]
+    batch_sizes = [128]
+    # learning_rates = [1e-4, 5e-4, 1e-3, 5e-3, 1e-2]
+    learning_rates = [1e-4, 1e-3]
+    # train_frequencies = [2, 4]
+    train_frequencies = [2]
+
+    for train_frequency in train_frequencies:
+        for batch_size in batch_sizes:
+            for learning_rate in learning_rates:
+                for i in range(args.process_count):
+                    print("Starting process {}".format(i))
+                    f = python3["-m", "baselines.multi_deepq.experiments.doom",
+                            "--batch_size={}".format(batch_size),
+                            "--train_frequency={}".format(train_frequency),
+                            "--learning_rate={}".format(learning_rate),
+                            "--worker_count={}".format(args.thread_count),
+                            "--tf_thread_count={}".format(args.tf_thread_count),
+                            "--env_name={}".format(args.env)] & BG(stdout=sys.stdout, stderr=sys.stderr)
+                    #taskset -cp $i $pid
+                    processes.append(f)
+
+                for process in processes:
+                    try:
+                        process.wait()
+                    except plumbum.commands.processes.ProcessExecutionError as e:
+                        print("Process failed with {}".format(e))
 
 
 if __name__ == "__main__":
