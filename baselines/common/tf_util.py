@@ -422,7 +422,7 @@ class _Function(object):
         elif is_placeholder(inpt):
             feed_dict[inpt] = value
 
-    def __call__(self, *args, session=None, **kwargs):
+    def __call__(self, *args, session=None, options=None, run_metadata=None, **kwargs):
         assert len(args) <= len(self.inputs), "Too many arguments provided"
         feed_dict = {}
         # Update the args
@@ -444,7 +444,8 @@ class _Function(object):
         # Update feed dict with givens.
         for inpt in self.givens:
             feed_dict[inpt] = feed_dict.get(inpt, self.givens[inpt])
-        results = get_session(session=session).run(self.outputs_update, feed_dict=feed_dict)[:-1]
+        results = get_session(session=session).run(self.outputs_update, feed_dict=feed_dict,
+                options=options, run_metadata=run_metadata)[:-1]
         if self.check_nan:
             if any(np.isnan(r).any() for r in results):
                 raise RuntimeError("Nan detected")

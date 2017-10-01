@@ -17,7 +17,7 @@ import argparse
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--batch_size", type=int, default=32)
-    parser.add_argument("--thread_count", type=int, default=1)
+    parser.add_argument("--actor_count", type=int, default=1)
     parser.add_argument("--tf_thread_count", type=int, default=1)
     parser.add_argument("--process_count", type=int, default=1)
     parser.add_argument("--env", type=str, default='Pong-v0')
@@ -55,7 +55,7 @@ def main():
                             "--batch_size={}".format(batch_size),
                             "--train_frequency={}".format(train_frequency),
                             "--learning_rate={}".format(learning_rate),
-                            "--worker_count={}".format(args.thread_count),
+                            "--actor_count={}".format(args.actor_count),
                             "--tf_thread_count={}".format(args.tf_thread_count),
                             "--env_name={}".format(args.env)] & BG(stdout=sys.stdout, stderr=sys.stderr)
                     #taskset -cp $i $pid
