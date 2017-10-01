@@ -295,7 +295,7 @@ class Learner(object):
                 self.logger.record_tabular("queue_size", self.queue_size(session=session))
                 self.logger.record_tabular("batch_mean_td_error", np.mean(td_error))
                 self.logger.record_tabular("batch_max_td_error", np.max(td_error))
-                self.logger.record_tabular("td_error", td_error)
+                self.logger.record_tabular("td_error", str(td_error))
                 event_timer.print_shares(self.logger)
                 event_timer.print_averages(self.logger)
                 self.logger.dump_tabular()
