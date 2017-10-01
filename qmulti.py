@@ -41,13 +41,13 @@ def main():
     # batch_sizes = [32, 64, 128, 256]
     batch_sizes = [32]
     # learning_rates = [1e-4, 5e-4, 1e-3, 5e-3, 1e-2]
-    learning_rates = [5e-4]
+    learning_rates = [1e-4]
 
     for batch_size in batch_sizes:
         for learning_rate in learning_rates:
             for i in range(args.process_count):
                 print("Starting process {}".format(i))
-                f = python3["-m", "baselines.qdqn.experiments.doom",
+                f = python3["-m", "baselines.qdqn.experiments.train_atari",
                         "--batch_size={}".format(batch_size),
                         "--learning_rate={}".format(learning_rate),
                         "--actor_count={}".format(args.actor_count),

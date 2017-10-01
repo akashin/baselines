@@ -13,7 +13,7 @@ from baselines import logger
 
 from baselines import qdqn
 from baselines.qdqn.replay_buffer import ReplayBuffer
-from baselines.common.schedules import LinearSchedule
+from baselines.common.schedules import LinearSchedule, PiecewiseSchedule
 
 from collections import namedtuple, defaultdict
 
@@ -25,7 +25,8 @@ class Config(object):
     def __init__(self):
         self.batch_size = 64
         self.gamma = 0.99
-        self.exploration_length = 50000
+        # self.exploration_length = 50000
+        self.exploration_length = 2e7
         self.learning_rate = 5e-3
         self.actor_count = 1
         self.tf_thread_count = 8
@@ -103,12 +104,19 @@ class Actor(object):
             enqueue_op = queue.enqueue([priority_ph, obs_t_input, act_t_ph, rew_t_ph, obs_tp1_input, done_mask_ph])
             self.enqueue = U.function([priority_ph, obs_t_input, act_t_ph, rew_t_ph, obs_tp1_input, done_mask_ph], enqueue_op)
 
-        self.max_iteration_count = int(self.config.exploration_length * 3.0)
+        self.max_iteration_count = int(self.config.exploration_length * 1.5)
         # self.max_iteration_count = 128
 
         # Create the schedule for exploration starting from 1 (every action is random) down to
         # 0.02 (98% of actions are selected according to values predicted by the model).
-        self.exploration = LinearSchedule(schedule_timesteps=self.config.exploration_length, initial_p=1.0, final_p=0.02)
+        # self.exploration = LinearSchedule(schedule_timesteps=self.config.exploration_length, initial_p=1.0, final_p=0.02)
+
+        approximate_num_iters = self.config.exploration_length
+        self.exploration = PiecewiseSchedule([
+            (0, 1.0),
+            (approximate_num_iters / 50, 0.1),
+            (approximate_num_iters / 5, 0.01)
+        ], outside_value=0.01)
 
     def run(self, session, coord):
         episode_rewards = [0.0]
@@ -118,11 +126,11 @@ class Actor(object):
         start_time = timer()
         event_timer = EventTimer()
         for t in range(self.max_iteration_count):
-            if t > 0 and t % 100 == 0:
+            if t > 0 and t % 10 == 0:
                 event_timer.start()
             # Take action and update exploration to the newest value
-            action = self.act(obs[None], update_eps=self.exploration.value(t), session=session)[0]
-            if done and len(episode_rewards) % 100 == 0:
+            action = self.act(np.array(obs)[None], update_eps=self.exploration.value(t), session=session)[0]
+            if done and len(episode_rewards) % 10 == 0:
                 print(self.debug["q_values"](obs[None], session=session))
                 # self.update_params(session=session)
                 # print(self.debug["q_values"](obs[None], session=session))
@@ -143,7 +151,7 @@ class Actor(object):
             event_timer.measure('queue')
 
             # show_episode = len(episode_rewards) > 100 and np.mean(episode_rewards[-101:-1]) >= 200
-            show_episode = len(episode_rewards) % 100 == 0
+            show_episode = len(episode_rewards) % 10 == 0
             if self.should_render and self.is_chief and show_episode:
                 # Show off the result
                 self.env.render()
@@ -155,7 +163,7 @@ class Actor(object):
 
             event_timer.stop()
 
-            if self.is_chief and done and len(episode_rewards) % 100 == 0:
+            if self.is_chief and done and len(episode_rewards) % 10 == 0:
                 self.logger.record_tabular("steps", t)
                 self.logger.record_tabular("episodes", len(episode_rewards))
                 self.logger.record_tabular("mean episode reward", round(np.mean(episode_rewards[-101:-1]), 1))
@@ -215,14 +223,15 @@ class Learner(object):
                     q_func=model,
                     num_actions=action_space.n,
                     gamma=config.gamma,
-                    optimizer=tf.train.AdamOptimizer(learning_rate=config.learning_rate),
+                    optimizer=tf.train.AdamOptimizer(learning_rate=config.learning_rate, epsilon=1e-4),
                     scope="learner",
+                    grad_norm_clipping=10,
                     reuse=False)
 
         self.max_iteration_count = int(self.config.exploration_length * 2.0)
 
         # Create the replay buffer
-        self.replay_buffer = ReplayBuffer(50000)
+        self.replay_buffer = ReplayBuffer(1e6)
 
     def run(self, session, coord):
         start_time = timer()

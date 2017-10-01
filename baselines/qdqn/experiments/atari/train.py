@@ -110,7 +110,7 @@ def maybe_load_model(savedir, container):
 
 if __name__ == '__main__':
     args = parse_args()
-    
+
     # Parse savedir and azure container.
     savedir = args.save_dir
     if savedir is None:
