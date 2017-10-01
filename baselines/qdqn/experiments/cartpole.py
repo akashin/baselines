@@ -11,15 +11,9 @@ from baselines import logger
 import baselines.common.tf_util as U
 from baselines.common.atari_wrappers import WarpFrame
 
-
-import ppaquette_gym_doom
-from ppaquette_gym_doom.wrappers.action_space import ToDiscrete
-from ppaquette_gym_doom.wrappers.observation_space import SetResolution
-
 from baselines.qdqn.models import linear_model, conv_model
 from baselines.qdqn.workers import Actor, Learner, StupidWorker, Config
 from baselines.qdqn.wrappers import ExternalProcess
-
 
 from gym.wrappers import SkipWrapper
 from scipy.misc import imresize
@@ -27,43 +21,9 @@ from gym.core import ObservationWrapper
 from gym.spaces.box import Box
 
 
-class PreprocessImage(ObservationWrapper):
-    def __init__(self, env, height=64, width=64, grayscale=True,
-            crop=lambda img: img):
-        """A gym wrapper that crops, scales image into the desired shapes and optionally grayscales it."""
-        super(PreprocessImage, self).__init__(env)
-        self.img_size = (height, width)
-        self.grayscale = grayscale
-        self.crop = crop
-
-        n_colors = 1 if self.grayscale else 3
-        self.observation_space = Box(0.0, 1.0, [height, width, n_colors])
-
-    def _observation(self, img):
-        """what happens to the observation"""
-        img = self.crop(img)
-        img = imresize(img, self.img_size)
-        if self.grayscale:
-            img = img.mean(-1, keepdims=True)
-        # img = np.transpose(img, (2, 0, 1))  # reshape from (h,w,colors) to (colors,h,w)
-        img = img.astype('float32') / 255.
-        # img = np.squeeze(img)
-        return img
-
-
-
 def make_env(env_name, seed):
-    def _make_env():
-        env_spec = gym.spec(env_name)
-        env_spec.id = env_name.split('/')[1]
-        env = env_spec.make()
-        env = SetResolution('160x120')(env)
-        env = PreprocessImage((SkipWrapper(4)(ToDiscrete("minimal")(env))),
-                width=80, height=80)
-        return env
-
-    # env = ExternalProcess(_make_env)
-    env = _make_env()
+    env = gym.make(env_name)
+    env.seed(seed)
     return env
 
 
@@ -109,15 +69,15 @@ def main():
 
     coord = tf.train.Coordinator()
 
-    model = conv_model
+    model = linear_model
 
-    env = make_env(args.env_name, -1)
+    env = make_env(args.env_name, 666)
     observation_space = env.observation_space
     action_space = env.action_space
     env.close()
 
     capacity = 2 ** 17
-    min_after_dequeue = 2 ** 10
+    # min_after_dequeue = 2 ** 10
 
     queue = tf.PriorityQueue(capacity=capacity,
             types=[tf.float32, tf.int32, tf.float32, tf.float32, tf.float32],

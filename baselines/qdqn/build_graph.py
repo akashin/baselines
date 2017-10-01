@@ -173,13 +173,15 @@ def build_act(make_obs_ph, q_func, num_actions, scope="deepq", learner_scope="le
 
         if scope != "learner":
             update_target_expr = []
-            for var, var_target in zip(sorted(q_func_vars, key=lambda v: v.name),
-                                       sorted(learner_q_func_vars, key=lambda v: v.name)):
+            for var, var_target in zip(sorted(learner_q_func_vars, key=lambda v: v.name),
+                                       sorted(q_func_vars, key=lambda v: v.name)):
                 update_target_expr.append(var_target.assign(var))
             update_target_expr = tf.group(*update_target_expr)
             update_target = U.function([], [], updates=[update_target_expr])
 
-    return act, update_target
+    q_values_func = U.function([observations_ph], q_values)
+
+    return act, update_target, { "q_values": q_values_func }
 
 
 def build_act_with_param_noise(make_obs_ph, q_func, num_actions, scope="deepq", reuse=None, param_noise_filter_func=None):

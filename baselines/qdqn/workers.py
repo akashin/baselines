@@ -25,13 +25,12 @@ class Config(object):
     def __init__(self):
         self.batch_size = 64
         self.gamma = 0.99
-        self.exploration_length = 50000
-        self.learning_rate = 1e-4
+        self.exploration_length = 100000
+        self.learning_rate = 5e-3
         self.actor_count = 1
         self.tf_thread_count = 8
-        self.train_frequency = 1
-        self.target_update_frequency = 500 / self.batch_size
-        self.params_update_frequency = 32
+        self.target_update_frequency = 4 * 500 / 64
+        self.params_update_frequency = 5000
 
     def __repr__(self):
         s = ''
@@ -87,7 +86,7 @@ class Actor(object):
         self.logger = logger
 
         with tf.device('/cpu:0'):
-            self.act, self.update_params = qdqn.build_act(
+            self.act, self.update_params, self.debug = qdqn.build_act(
                     make_obs_ph=lambda name: U.BatchInput(env.observation_space.shape, name=name),
                     q_func=model,
                     num_actions=env.action_space.n,
@@ -104,7 +103,7 @@ class Actor(object):
             enqueue_op = queue.enqueue([priority_ph, obs_t_input, act_t_ph, rew_t_ph, obs_tp1_input, done_mask_ph])
             self.enqueue = U.function([priority_ph, obs_t_input, act_t_ph, rew_t_ph, obs_tp1_input, done_mask_ph], enqueue_op)
 
-        self.max_iteration_count = int(self.config.exploration_length * 5.0)
+        self.max_iteration_count = int(self.config.exploration_length * 2.0)
         # self.max_iteration_count = 128
 
         # Create the schedule for exploration starting from 1 (every action is random) down to
@@ -114,14 +113,20 @@ class Actor(object):
     def run(self, session, coord):
         episode_rewards = [0.0]
         obs = self.env.reset()
+        done = False
 
         start_time = timer()
         event_timer = EventTimer()
         for t in range(self.max_iteration_count):
-            if t > 0 and t % 500 == 0:
+            if t > 0 and t % 100 == 0:
                 event_timer.start()
             # Take action and update exploration to the newest value
             action = self.act(obs[None], update_eps=self.exploration.value(t), session=session)[0]
+            if done and len(episode_rewards) % 100 == 0:
+                print(self.debug["q_values"](obs[None], session=session))
+                # self.update_params(session=session)
+                # print(self.debug["q_values"](obs[None], session=session))
+
             event_timer.measure('act')
             new_obs, rew, done, _ = self.env.step(action)
             event_timer.measure('step')
@@ -150,7 +155,7 @@ class Actor(object):
 
             event_timer.stop()
 
-            if self.is_chief and done and len(episode_rewards) % 10 == 0:
+            if self.is_chief and done and len(episode_rewards) % 100 == 0:
                 self.logger.record_tabular("steps", t)
                 self.logger.record_tabular("episodes", len(episode_rewards))
                 self.logger.record_tabular("mean episode reward", round(np.mean(episode_rewards[-101:-1]), 1))
@@ -214,8 +219,10 @@ class Learner(object):
                     scope="learner",
                     reuse=False)
 
-            self.max_iteration_count = int(self.config.exploration_length * 5.0)
-        # self.max_iteration_count = 1000
+        self.max_iteration_count = int(self.config.exploration_length * 2.0)
+
+        # Create the replay buffer
+        self.replay_buffer = ReplayBuffer(50000)
 
     def run(self, session, coord):
         start_time = timer()
@@ -227,11 +234,10 @@ class Learner(object):
             chrome_trace = fetched_timeline.generate_chrome_trace_format()
             many_runs_timeline.update_timeline(chrome_trace)
 
-        # for t in range(self.max_iteration_count):
-        for t in range(100000):
+        for t in range(self.max_iteration_count):
             # should_trace = t > 0 and (t % 1 == 0)
             should_trace = False
-            should_profile = t > 0 and (t % 100 == 0)
+            should_profile = t > 0 and (t % 300 == 0)
 
             if should_trace:
                 options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
@@ -242,23 +248,28 @@ class Learner(object):
 
             if should_profile: event_timer.start()
 
-            # Minimize the error in Bellman's equation on a batch sampled from replay buffer.
-            priorities, obses_t, actions, rewards, obses_tp1, dones = self.dequeue(
-                    session=session, options=options, run_metadata=run_metadata)
+            if self.queue_size(session=session) >= 128 or t == 0:
+                priorities, obses_t, actions, rewards, obses_tp1, dones = self.dequeue(
+                        session=session, options=options, run_metadata=run_metadata)
+                for i in range(len(actions)):
+                    self.replay_buffer.add(obses_t[i], actions[i], rewards[i], obses_tp1[i], dones[i])
+
             if should_profile: event_timer.measure('dequeue')
             if should_trace: process_trace(run_metadata, many_runs_timeline)
 
+            # Minimize the error in Bellman's equation on a batch sampled from replay buffer.
+            obses_t, actions, rewards, obses_tp1, dones = self.replay_buffer.sample(self.config.batch_size)
             td_error = self.train(obses_t, actions, rewards, obses_tp1, dones, np.ones_like(rewards),
                     session=session, options=options, run_metadata=run_metadata)
             if should_profile: event_timer.measure('train')
             if should_trace: process_trace(run_metadata, many_runs_timeline)
 
-            if np.random.random() > 1.0 / 64.0:
-                priorities = [np.random.randint(1000000) for _ in range(len(priorities))]
-                self.enqueue(priorities, obses_t, actions, rewards, obses_tp1, dones,
-                        session=session, options=options, run_metadata=run_metadata)
-                if should_profile: event_timer.measure('enqueue')
-                if should_trace: process_trace(run_metadata, many_runs_timeline)
+            # if np.random.random() > 1.0 / 16.0:
+                # priorities = [np.random.randint(1000000) for _ in range(len(priorities))]
+                # self.enqueue(priorities, obses_t, actions, rewards, obses_tp1, dones,
+                        # session=session, options=options, run_metadata=run_metadata)
+                # if should_profile: event_timer.measure('enqueue')
+                # if should_trace: process_trace(run_metadata, many_runs_timeline)
 
             # Update target network periodically.
             if t % self.config.target_update_frequency == 0:
