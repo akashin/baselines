@@ -23,15 +23,15 @@ import json
 class Config(object):
 
     def __init__(self):
-        self.batch_size = 32
+        self.batch_size = 64
         self.gamma = 0.99
-        self.exploration_length = 100000
+        self.exploration_length = 50000
         self.learning_rate = 1e-4
         self.actor_count = 1
         self.tf_thread_count = 8
         self.train_frequency = 1
-        self.target_update_frequency = 500 / 32.0
-        self.params_update_frequency = 500
+        self.target_update_frequency = 500 / self.batch_size
+        self.params_update_frequency = 32
 
     def __repr__(self):
         s = ''
@@ -69,21 +69,22 @@ class EventTimer(object):
         self.started = False
         self.total_time += timer() - self.start_time
 
-    def print_shares(self):
+    def print_shares(self, logger):
         for key, value in sorted(self.times.items()):
             logger.record_tabular(key + "_share", value / self.total_time * 100.0)
 
-    def print_averages(self):
+    def print_averages(self, logger):
         for key, value in sorted(self.times.items()):
             logger.record_tabular(key + "_time", value * 1.0 / self.visits[key])
 
 
 class Actor(object):
-    def __init__(self, index, is_chief, env, model, queue, config, should_render=True):
+    def __init__(self, index, is_chief, env, model, queue, config, logger, should_render=True):
         self.config = config
         self.is_chief = is_chief
         self.env = env
         self.should_render = should_render
+        self.logger = logger
 
         with tf.device('/cpu:0'):
             self.act, self.update_params = qdqn.build_act(
@@ -94,19 +95,18 @@ class Actor(object):
                     learner_scope="learner",
                     reuse=False)
 
+            priority_ph = tf.placeholder(tf.int64, [], name="priority")
             obs_t_input = tf.placeholder(tf.float32, env.observation_space.shape, name="obs_t")
             act_t_ph = tf.placeholder(tf.int32, env.action_space.shape, name="action")
             rew_t_ph = tf.placeholder(tf.float32, [], name="reward")
             obs_tp1_input = tf.placeholder(tf.float32, env.observation_space.shape, name="obs_tp1")
             done_mask_ph = tf.placeholder(tf.float32, [], name="done")
-            enqueue_op = queue.enqueue([obs_t_input, act_t_ph, rew_t_ph, obs_tp1_input, done_mask_ph])
-            self.enqueue = U.function([obs_t_input, act_t_ph, rew_t_ph, obs_tp1_input, done_mask_ph], enqueue_op)
+            enqueue_op = queue.enqueue([priority_ph, obs_t_input, act_t_ph, rew_t_ph, obs_tp1_input, done_mask_ph])
+            self.enqueue = U.function([priority_ph, obs_t_input, act_t_ph, rew_t_ph, obs_tp1_input, done_mask_ph], enqueue_op)
 
-        self.max_iteration_count = int(self.config.exploration_length * 1.5)
+        self.max_iteration_count = int(self.config.exploration_length * 5.0)
         # self.max_iteration_count = 128
 
-        # Create the replay buffer
-        # self.replay_buffer = ReplayBuffer(config.replay_size)
         # Create the schedule for exploration starting from 1 (every action is random) down to
         # 0.02 (98% of actions are selected according to values predicted by the model).
         self.exploration = LinearSchedule(schedule_timesteps=self.config.exploration_length, initial_p=1.0, final_p=0.02)
@@ -118,7 +118,7 @@ class Actor(object):
         start_time = timer()
         event_timer = EventTimer()
         for t in range(self.max_iteration_count):
-            if t > 1000 and t % 500 == 0:
+            if t > 0 and t % 500 == 0:
                 event_timer.start()
             # Take action and update exploration to the newest value
             action = self.act(obs[None], update_eps=self.exploration.value(t), session=session)[0]
@@ -126,7 +126,7 @@ class Actor(object):
             new_obs, rew, done, _ = self.env.step(action)
             event_timer.measure('step')
             # Store transition in the replay buffer.
-            self.enqueue(obs, action, rew, new_obs, float(done), session=session)
+            self.enqueue(np.random.randint(100000), obs, action, rew, new_obs, float(done), session=session)
             # self.replay_buffer.add(obs, action, rew, new_obs, float(done))
             obs = new_obs
 
@@ -151,15 +151,15 @@ class Actor(object):
             event_timer.stop()
 
             if self.is_chief and done and len(episode_rewards) % 10 == 0:
-                logger.record_tabular("steps", t)
-                logger.record_tabular("episodes", len(episode_rewards))
-                logger.record_tabular("mean episode reward", round(np.mean(episode_rewards[-101:-1]), 1))
-                logger.record_tabular("time elapsed", timer() - start_time)
-                logger.record_tabular("steps/s", t / (timer() - start_time))
-                logger.record_tabular("% time spent exploring", int(100 * self.exploration.value(t)))
-                event_timer.print_shares()
-                event_timer.print_averages()
-                logger.dump_tabular()
+                self.logger.record_tabular("steps", t)
+                self.logger.record_tabular("episodes", len(episode_rewards))
+                self.logger.record_tabular("mean episode reward", round(np.mean(episode_rewards[-101:-1]), 1))
+                self.logger.record_tabular("time elapsed", timer() - start_time)
+                self.logger.record_tabular("steps/s", t / (timer() - start_time))
+                self.logger.record_tabular("% time spent exploring", int(100 * self.exploration.value(t)))
+                event_timer.print_shares(self.logger)
+                event_timer.print_averages(self.logger)
+                self.logger.dump_tabular()
 
 class TimeLiner:
     _timeline_dict = None
@@ -183,21 +183,23 @@ class TimeLiner:
 
 
 class Learner(object):
-    def __init__(self, observation_space, action_space, model, queue, config):
+    def __init__(self, observation_space, action_space, model, queue, config, logger):
         self.config = config
         self.queue = queue
+        self.logger = logger
 
         queue_size_op = self.queue.size()
         self.queue_size = U.function([], queue_size_op)
 
         with tf.device('/cpu:0'):
-            obs_t_input = tf.placeholder(tf.float32, [32] + list(observation_space.shape), name="obs_t")
-            act_t_ph = tf.placeholder(tf.int32, [32] + list(action_space.shape), name="action")
-            rew_t_ph = tf.placeholder(tf.float32, [32] + [], name="reward")
-            obs_tp1_input = tf.placeholder(tf.float32, [32] + list(observation_space.shape), name="obs_tp1")
-            done_mask_ph = tf.placeholder(tf.float32, [32] + [], name="done")
-            enqueue_op = queue.enqueue_many([obs_t_input, act_t_ph, rew_t_ph, obs_tp1_input, done_mask_ph])
-            self.enqueue = U.function([obs_t_input, act_t_ph, rew_t_ph, obs_tp1_input, done_mask_ph], enqueue_op)
+            priority_ph = tf.placeholder(tf.int64, [config.batch_size], name="priority")
+            obs_t_input = tf.placeholder(tf.float32, [config.batch_size] + list(observation_space.shape), name="obs_t")
+            act_t_ph = tf.placeholder(tf.int32, [config.batch_size] + list(action_space.shape), name="action")
+            rew_t_ph = tf.placeholder(tf.float32, [config.batch_size] + [], name="reward")
+            obs_tp1_input = tf.placeholder(tf.float32, [config.batch_size] + list(observation_space.shape), name="obs_tp1")
+            done_mask_ph = tf.placeholder(tf.float32, [config.batch_size] + [], name="done")
+            enqueue_op = queue.enqueue_many([priority_ph, obs_t_input, act_t_ph, rew_t_ph, obs_tp1_input, done_mask_ph])
+            self.enqueue = U.function([priority_ph, obs_t_input, act_t_ph, rew_t_ph, obs_tp1_input, done_mask_ph], enqueue_op)
 
             dequeue_op = self.queue.dequeue_many(config.batch_size)
             self.dequeue = U.function([], dequeue_op)
@@ -212,7 +214,7 @@ class Learner(object):
                     scope="learner",
                     reuse=False)
 
-        self.max_iteration_count = int(self.config.exploration_length * 1.5)
+            self.max_iteration_count = int(self.config.exploration_length * 5.0)
         # self.max_iteration_count = 1000
 
     def run(self, session, coord):
@@ -241,18 +243,19 @@ class Learner(object):
             if should_profile: event_timer.start()
 
             # Minimize the error in Bellman's equation on a batch sampled from replay buffer.
-            obses_t, actions, rewards, obses_tp1, dones = self.dequeue(
+            priorities, obses_t, actions, rewards, obses_tp1, dones = self.dequeue(
                     session=session, options=options, run_metadata=run_metadata)
             if should_profile: event_timer.measure('dequeue')
             if should_trace: process_trace(run_metadata, many_runs_timeline)
 
-            self.train(obses_t, actions, rewards, obses_tp1, dones, np.ones_like(rewards),
+            td_error = self.train(obses_t, actions, rewards, obses_tp1, dones, np.ones_like(rewards),
                     session=session, options=options, run_metadata=run_metadata)
             if should_profile: event_timer.measure('train')
             if should_trace: process_trace(run_metadata, many_runs_timeline)
 
-            if np.random.random() > 1.0 / 20.0:
-                self.enqueue(obses_t, actions, rewards, obses_tp1, dones,
+            if np.random.random() > 1.0 / 64.0:
+                priorities = [np.random.randint(1000000) for _ in range(len(priorities))]
+                self.enqueue(priorities, obses_t, actions, rewards, obses_tp1, dones,
                         session=session, options=options, run_metadata=run_metadata)
                 if should_profile: event_timer.measure('enqueue')
                 if should_trace: process_trace(run_metadata, many_runs_timeline)
@@ -266,13 +269,18 @@ class Learner(object):
             event_timer.stop()
 
             if t % 3000 == 0:
-                logger.record_tabular("steps", t)
-                logger.record_tabular("time elapsed", timer() - start_time)
-                logger.record_tabular("steps/s", t / (timer() - start_time))
-                logger.record_tabular("queue_size", self.queue_size(session=session))
-                event_timer.print_shares()
-                event_timer.print_averages()
-                logger.dump_tabular()
+                print(td_error)
+
+            if t % 3000 == 0:
+                self.logger.record_tabular("steps", t)
+                self.logger.record_tabular("time elapsed", timer() - start_time)
+                self.logger.record_tabular("steps/s", t / (timer() - start_time))
+                self.logger.record_tabular("queue_size", self.queue_size(session=session))
+                self.logger.record_tabular("batch_mean_td_error", np.mean(td_error))
+                self.logger.record_tabular("batch_max_td_error", np.max(td_error))
+                event_timer.print_shares(self.logger)
+                event_timer.print_averages(self.logger)
+                self.logger.dump_tabular()
 
             # fetched_timeline = timeline.Timeline(run_metadata.step_stats)
             # chrome_trace = fetched_timeline.generate_chrome_trace_format()

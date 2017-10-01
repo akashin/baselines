@@ -2,6 +2,7 @@ import argparse
 import gym
 import numpy as np
 import tensorflow as tf
+import os
 
 import threading
 
@@ -28,7 +29,7 @@ from gym.spaces.box import Box
 
 class PreprocessImage(ObservationWrapper):
     def __init__(self, env, height=64, width=64, grayscale=True,
-                 crop=lambda img: img):
+            crop=lambda img: img):
         """A gym wrapper that crops, scales image into the desired shapes and optionally grayscales it."""
         super(PreprocessImage, self).__init__(env)
         self.img_size = (height, width)
@@ -93,7 +94,19 @@ def main():
     tf.set_random_seed(7)
 
     log_dir = "./results/{}_{}{}".format(ALGO, escaped(args.env_name), config)
-    logger.configure(dir=log_dir)
+
+    def create_learner_logger(base_dir):
+        log_dir = os.path.join(base_dir, "learner")
+        return logger.Logger(log_dir,
+                [logger.make_output_format(f, log_dir) for f in logger.LOG_OUTPUT_FORMATS]
+                )
+
+    def create_actor_logger(base_dir, index):
+        log_dir = os.path.join(base_dir, "actor_{}".format(index))
+        return logger.Logger(log_dir,
+                [logger.make_output_format(f, log_dir) for f in logger.LOG_OUTPUT_FORMATS]
+                )
+
     print("Running training with arguments: {} and log_dir: {}".format(args, log_dir))
 
     coord = tf.train.Coordinator()
@@ -105,14 +118,18 @@ def main():
     action_space = env.action_space
     env.close()
 
-    queue = tf.FIFOQueue(capacity=2**20,
-            shapes=[observation_space.shape, action_space.shape, [], observation_space.shape, []],
-            dtypes=[tf.float32, tf.int32, tf.float32, tf.float32, tf.float32])
+    capacity = 2 ** 17
+    min_after_dequeue = 2 ** 10
+
+    queue = tf.PriorityQueue(capacity=capacity,
+            types=[tf.float32, tf.int32, tf.float32, tf.float32, tf.float32],
+            shapes=[observation_space.shape, action_space.shape, [], observation_space.shape, []])
 
     workers = []
-    workers.append(Learner(observation_space, action_space, model, queue, config))
+    workers.append(Learner(observation_space, action_space, model, queue, config, create_learner_logger(log_dir)))
     for i in range(args.actor_count):
-        workers.append(Actor(i, i == 0, make_env(args.env_name, i), model, queue, config, should_render=False))
+        workers.append(Actor(i, i == 0, make_env(args.env_name, i), model, queue, config, create_actor_logger(log_dir, i),
+            should_render=False))
         # workers.append(StupidWorker(i == 0, make_env(args.env_name, i), model))
 
     with U.make_session(args.tf_thread_count) as session:

@@ -229,11 +229,15 @@ class Logger(object):
     def logkv(self, key, val):
         self.name2val[key] = val
 
+    record_tabular = logkv
+
     def dumpkvs(self):
         if self.level == DISABLED: return
         for fmt in self.output_formats:
             fmt.writekvs(self.name2val)
         self.name2val.clear()
+
+    dump_tabular = dumpkvs
 
     def log(self, *args, level=INFO):
         if self.level <= level:
