@@ -25,12 +25,12 @@ class Config(object):
     def __init__(self):
         self.batch_size = 64
         self.gamma = 0.99
-        self.exploration_length = 100000
+        self.exploration_length = 50000
         self.learning_rate = 5e-3
         self.actor_count = 1
         self.tf_thread_count = 8
-        self.target_update_frequency = 4 * 500 / 64
-        self.params_update_frequency = 5000
+        self.target_update_frequency = 200
+        self.params_update_frequency = 1000
 
     def __repr__(self):
         s = ''
@@ -103,7 +103,7 @@ class Actor(object):
             enqueue_op = queue.enqueue([priority_ph, obs_t_input, act_t_ph, rew_t_ph, obs_tp1_input, done_mask_ph])
             self.enqueue = U.function([priority_ph, obs_t_input, act_t_ph, rew_t_ph, obs_tp1_input, done_mask_ph], enqueue_op)
 
-        self.max_iteration_count = int(self.config.exploration_length * 2.0)
+        self.max_iteration_count = int(self.config.exploration_length * 3.0)
         # self.max_iteration_count = 128
 
         # Create the schedule for exploration starting from 1 (every action is random) down to

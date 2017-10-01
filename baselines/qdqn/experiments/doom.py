@@ -51,6 +51,10 @@ class PreprocessImage(ObservationWrapper):
         return img
 
 
+class ScaleRewardEnv(gym.RewardWrapper):
+    def _reward(self, reward):
+        return reward / 400.0
+
 
 def make_env(env_name, seed):
     def _make_env():
@@ -60,7 +64,7 @@ def make_env(env_name, seed):
         env = SetResolution('160x120')(env)
         env = PreprocessImage((SkipWrapper(4)(ToDiscrete("minimal")(env))),
                 width=80, height=80)
-        return env
+        return ScaleRewardEnv(env)
 
     # env = ExternalProcess(_make_env)
     env = _make_env()
@@ -86,7 +90,7 @@ def main():
     config.tf_thread_count = args.tf_thread_count
     config.learning_rate = args.learning_rate
 
-    ALGO = "QDQN"
+    ALGO = "QDQN_SCALED"
 
     np.random.seed(42)
     tf.set_random_seed(7)

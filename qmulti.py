@@ -39,9 +39,9 @@ def main():
     # learning_rates = [5e-4]
 
     # batch_sizes = [32, 64, 128, 256]
-    batch_sizes = [128]
+    batch_sizes = [32]
     # learning_rates = [1e-4, 5e-4, 1e-3, 5e-3, 1e-2]
-    learning_rates = [1e-4]
+    learning_rates = [5e-4]
 
     for batch_size in batch_sizes:
         for learning_rate in learning_rates:

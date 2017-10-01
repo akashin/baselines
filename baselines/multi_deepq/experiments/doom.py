@@ -50,6 +50,10 @@ class PreprocessImage(ObservationWrapper):
         return img
 
 
+class ScaleRewardEnv(gym.RewardWrapper):
+    def _reward(self, reward):
+        return reward / 400.0
+
 
 def make_env(env_name, seed):
     def _make_env():
@@ -59,7 +63,7 @@ def make_env(env_name, seed):
         env = SetResolution('160x120')(env)
         env = PreprocessImage((SkipWrapper(4)(ToDiscrete("minimal")(env))),
                 width=80, height=80)
-        return env
+        return ScaleRewardEnv(env)
 
     # env = ExternalProcess(_make_env)
     env = _make_env()
@@ -90,7 +94,7 @@ def main():
     np.random.seed(42)
     tf.set_random_seed(7)
 
-    log_dir = "./results/DQN_{}{}".format(escaped(args.env_name), config)
+    log_dir = "./results/DQN_SCALED_{}{}".format(escaped(args.env_name), config)
     logger.configure(dir=log_dir)
     print("Running training with arguments: {} and log_dir: {}".format(args, log_dir))
 

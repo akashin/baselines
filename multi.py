@@ -51,7 +51,7 @@ def main():
             for learning_rate in learning_rates:
                 for i in range(args.process_count):
                     print("Starting process {}".format(i))
-                    f = python3["-m", "baselines.qdqn.experiments.doom",
+                    f = python3["-m", "baselines.multi_deepq.experiments.doom",
                             "--batch_size={}".format(batch_size),
                             "--train_frequency={}".format(train_frequency),
                             "--learning_rate={}".format(learning_rate),
