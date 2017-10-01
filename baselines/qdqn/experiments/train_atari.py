@@ -85,8 +85,8 @@ def main():
     action_space = env.action_space
     env.close()
 
-    capacity = 2 ** 20
-    min_after_dequeue = 2 ** 10
+    capacity = 2 ** 20 / 4
+    # min_after_dequeue = 2 ** 10
 
     queue = tf.PriorityQueue(capacity=capacity,
             types=[tf.float32, tf.int32, tf.float32, tf.float32, tf.float32],
@@ -96,7 +96,7 @@ def main():
     workers.append(Learner(observation_space, action_space, model, queue, config, create_learner_logger(log_dir)))
     for i in range(args.actor_count):
         workers.append(Actor(i, i == 0, make_env(args.env_name, i), model, queue, config, create_actor_logger(log_dir, i),
-            should_render=True))
+            should_render=False))
         # workers.append(StupidWorker(i == 0, make_env(args.env_name, i), model))
 
     with U.make_session(args.tf_thread_count) as session:

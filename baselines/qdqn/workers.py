@@ -231,7 +231,7 @@ class Learner(object):
         self.max_iteration_count = int(self.config.exploration_length * 2.0)
 
         # Create the replay buffer
-        self.replay_buffer = ReplayBuffer(1e6)
+        self.replay_buffer = ReplayBuffer(1e6 / 4.0)
 
     def run(self, session, coord):
         start_time = timer()
@@ -246,7 +246,7 @@ class Learner(object):
         for t in range(self.max_iteration_count):
             # should_trace = t > 0 and (t % 1 == 0)
             should_trace = False
-            should_profile = t > 0 and (t % 300 == 0)
+            should_profile = t > 0 and (t % 3000 == 0)
 
             if should_trace:
                 options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
@@ -289,15 +289,13 @@ class Learner(object):
             event_timer.stop()
 
             if t > 0 and t % 3000 == 0:
-                print(td_error)
-
-            if t > 0 and t % 3000 == 0:
                 self.logger.record_tabular("steps", t)
                 self.logger.record_tabular("time elapsed", timer() - start_time)
                 self.logger.record_tabular("steps/s", t / (timer() - start_time))
                 self.logger.record_tabular("queue_size", self.queue_size(session=session))
                 self.logger.record_tabular("batch_mean_td_error", np.mean(td_error))
                 self.logger.record_tabular("batch_max_td_error", np.max(td_error))
+                self.logger.record_tabular("td_error", td_error)
                 event_timer.print_shares(self.logger)
                 event_timer.print_averages(self.logger)
                 self.logger.dump_tabular()
