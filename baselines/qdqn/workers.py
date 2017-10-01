@@ -268,10 +268,10 @@ class Learner(object):
 
             event_timer.stop()
 
-            if t % 3000 == 0:
+            if t > 0 and t % 3000 == 0:
                 print(td_error)
 
-            if t % 3000 == 0:
+            if t > 0 and t % 3000 == 0:
                 self.logger.record_tabular("steps", t)
                 self.logger.record_tabular("time elapsed", timer() - start_time)
                 self.logger.record_tabular("steps/s", t / (timer() - start_time))
