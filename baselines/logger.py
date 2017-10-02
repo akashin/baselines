@@ -129,10 +129,10 @@ def make_output_format(format, ev_dir):
     if format == 'stdout':
         return HumanOutputFormat(sys.stdout)
     elif format == 'log':
-        log_file = open(osp.join(ev_dir, 'log.txt'), 'wt')
+        log_file = open(osp.join(ev_dir, 'log.txt'), 'at')
         return HumanOutputFormat(log_file)
     elif format == 'json':
-        json_file = open(osp.join(ev_dir, 'progress.json'), 'wt')
+        json_file = open(osp.join(ev_dir, 'progress.json'), 'at')
         return JSONOutputFormat(json_file)
     elif format == 'tensorboard':
         return TensorBoardOutputFormat(osp.join(ev_dir, 'tb'))
