@@ -85,7 +85,7 @@ def main():
     action_space = env.action_space
     env.close()
 
-    capacity = 2 ** 20 / 4
+    capacity = 2 ** 20 / 8
     # min_after_dequeue = 2 ** 10
 
     queue = tf.PriorityQueue(capacity=capacity,

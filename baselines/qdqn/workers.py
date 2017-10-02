@@ -18,6 +18,13 @@ from baselines.common.schedules import LinearSchedule, PiecewiseSchedule
 from collections import namedtuple, defaultdict
 
 import json
+import os
+import time
+
+from baselines.common.misc_util import (
+        pickle_load,
+        relatively_safe_pickle_dump
+        )
 
 
 class Config(object):
@@ -25,13 +32,15 @@ class Config(object):
     def __init__(self):
         self.batch_size = 64
         self.gamma = 0.99
+        self.actor_count = 1
         # self.exploration_length = 50000
         self.exploration_length = 2e7
+        self.exploration_schedule = "linear"
         self.learning_rate = 5e-3
-        self.actor_count = 1
         self.tf_thread_count = 8
         self.target_update_frequency = 200
         self.params_update_frequency = 1000
+        self.queue_capacity = 2 ** 17
 
     def __repr__(self):
         s = ''
@@ -83,6 +92,7 @@ class Actor(object):
         self.config = config
         self.is_chief = is_chief
         self.env = env
+        self.global_step = tf.train.get_global_step()
         self.should_render = should_render
         self.logger = logger
 
@@ -105,31 +115,45 @@ class Actor(object):
             self.enqueue = U.function([priority_ph, obs_t_input, act_t_ph, rew_t_ph, obs_tp1_input, done_mask_ph], enqueue_op)
 
         self.max_iteration_count = int(self.config.exploration_length * 1.5)
-        # self.max_iteration_count = 128
 
-        # Create the schedule for exploration starting from 1 (every action is random) down to
-        # 0.02 (98% of actions are selected according to values predicted by the model).
-        # self.exploration = LinearSchedule(schedule_timesteps=self.config.exploration_length, initial_p=1.0, final_p=0.02)
-
-        approximate_num_iters = self.config.exploration_length
-        self.exploration = PiecewiseSchedule([
-            (0, 1.0),
-            (approximate_num_iters / 50, 0.1),
-            (approximate_num_iters / 5, 0.01)
-        ], outside_value=0.01)
+        if self.config.exploration_schedule == "linear":
+            # Create the schedule for exploration starting from 1 (every action is random) down to
+            # 0.02 (98% of actions are selected according to values predicted by the model).
+            self.exploration = LinearSchedule(
+                    schedule_timesteps=self.config.exploration_length, initial_p=1.0, final_p=0.02)
+        elif self.config.exploration_schedule == "piecewise":
+            approximate_num_iters = self.config.exploration_length
+            self.exploration = PiecewiseSchedule([
+                (0, 1.0),
+                (approximate_num_iters / 50, 0.1),
+                (approximate_num_iters / 5, 0.01)
+            ], outside_value=0.01)
+        else:
+            raise ValueError("Bad exploration schedule")
 
     def run(self, session, coord):
         episode_rewards = [0.0]
         obs = self.env.reset()
         done = False
 
+        global_step = session.run(self.global_step)
+        exploration_value = self.exploration.value(global_step)
+        print("Starting acting from step {}".format(global_step))
+
         start_time = timer()
         event_timer = EventTimer()
-        for t in range(self.max_iteration_count):
+        for t in itertools.count():
+            if coord.should_stop():
+                break
+
+            if t % 100 == 0:
+                global_step = session.run(self.global_step)
+                exploration_value = self.exploration.value(global_step)
+
             if t > 0 and t % 10 == 0:
                 event_timer.start()
             # Take action and update exploration to the newest value
-            action = self.act(np.array(obs)[None], update_eps=self.exploration.value(t), session=session)[0]
+            action = self.act(np.array(obs)[None], update_eps=exploration_value, session=session)[0]
             if done and len(episode_rewards) % 10 == 0:
                 print(self.debug["q_values"](obs[None], session=session))
                 # self.update_params(session=session)
@@ -165,11 +189,12 @@ class Actor(object):
 
             if self.is_chief and done and len(episode_rewards) % 10 == 0:
                 self.logger.record_tabular("steps", t)
+                self.logger.record_tabular("global_step", global_step)
                 self.logger.record_tabular("episodes", len(episode_rewards))
                 self.logger.record_tabular("mean episode reward", round(np.mean(episode_rewards[-101:-1]), 1))
                 self.logger.record_tabular("time elapsed", timer() - start_time)
                 self.logger.record_tabular("steps/s", t / (timer() - start_time))
-                self.logger.record_tabular("% time spent exploring", int(100 * self.exploration.value(t)))
+                self.logger.record_tabular("% time spent exploring", int(100 * exploration_value))
                 event_timer.print_shares(self.logger)
                 event_timer.print_averages(self.logger)
                 self.logger.dump_tabular()
@@ -196,10 +221,11 @@ class TimeLiner:
 
 
 class Learner(object):
-    def __init__(self, observation_space, action_space, model, queue, config, logger):
+    def __init__(self, save_path, observation_space, action_space, model, queue, config, logger):
         self.config = config
         self.queue = queue
         self.logger = logger
+        self.save_path = save_path
 
         queue_size_op = self.queue.size()
         self.queue_size = U.function([], queue_size_op)
@@ -217,6 +243,9 @@ class Learner(object):
             dequeue_op = self.queue.dequeue_many(config.batch_size)
             self.dequeue = U.function([], dequeue_op)
 
+            self.global_step = tf.train.create_global_step()
+            self.update_global_step = tf.assign_add(self.global_step, 1)
+
         with tf.device('/gpu:0'):
             self.act, self.train, self.update_target, self.debug = qdqn.build_train(
                     make_obs_ph=lambda name: U.BatchInput(observation_space.shape, name=name),
@@ -228,10 +257,51 @@ class Learner(object):
                     grad_norm_clipping=10,
                     reuse=False)
 
+        self.num_iters = 0
         self.max_iteration_count = int(self.config.exploration_length * 2.0)
 
+        self.checkpoint_frequency = max(self.max_iteration_count / 100, 10000)
+
+        self.log_frequency = 3000
+
         # Create the replay buffer
-        self.replay_buffer = ReplayBuffer(1e6 / 4.0)
+        self.replay_buffer = ReplayBuffer(int(1e6 / 16))
+
+    def load(self, path, session):
+        """Load model if present at the specified path."""
+        if path is None:
+            return
+
+        state_path = os.path.join(os.path.join(path, 'training_state.pkl.zip'))
+        found_model = os.path.exists(state_path)
+        if found_model:
+            state = pickle_load(state_path, compression=True)
+            model_dir = "model-{}".format(state["num_iters"])
+            U.load_state(os.path.join(path, model_dir, "saved"), session=session)
+            self.logger.log("Loaded models checkpoint at {} iterations".format(state["num_iters"]))
+
+            if state is not None:
+                self.num_iters = state["num_iters"]
+                # self.replay_buffer = state["replay_buffer"],
+                # monitored_env.set_state(state["monitor_state"])
+
+    def save(self, path, session):
+        """This function checkpoints the model and state of the training algorithm."""
+        if path is None:
+            return
+
+        state = {
+            # 'replay_buffer': self.replay_buffer,
+            'num_iters': self.num_iters,
+            # 'monitor_state': monitored_env.get_state(),
+        }
+
+        start_time = time.time()
+        model_dir = "model-{}".format(state["num_iters"])
+        U.save_state(os.path.join(path, model_dir, "saved"), session=session)
+        relatively_safe_pickle_dump(state, os.path.join(path, 'training_state.pkl.zip'), compression=True)
+        # relatively_safe_pickle_dump(state["monitor_state"], os.path.join(path, 'monitor_state.pkl'))
+        logger.log("Saved model in {} seconds\n".format(time.time() - start_time))
 
     def run(self, session, coord):
         start_time = timer()
@@ -243,10 +313,17 @@ class Learner(object):
             chrome_trace = fetched_timeline.generate_chrome_trace_format()
             many_runs_timeline.update_timeline(chrome_trace)
 
-        for t in range(self.max_iteration_count):
+        global_step = session.run(self.global_step)
+        self.num_iters = global_step
+        print("Starting training from step {}".format(global_step))
+        for t in range(global_step, self.max_iteration_count):
             # should_trace = t > 0 and (t % 1 == 0)
             should_trace = False
-            should_profile = t > 0 and (t % 3000 == 0)
+            should_profile = t > 0 and (t % self.log_frequency == 0)
+
+            if t != global_step and t % self.checkpoint_frequency == 0:
+                self.num_iters = t
+                self.save(self.save_path, session)
 
             if should_trace:
                 options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
@@ -257,7 +334,7 @@ class Learner(object):
 
             if should_profile: event_timer.start()
 
-            if self.queue_size(session=session) >= 128 or t == 0:
+            if self.queue_size(session=session) >= 128 or len(self.replay_buffer) == 0:
                 priorities, obses_t, actions, rewards, obses_tp1, dones = self.dequeue(
                         session=session, options=options, run_metadata=run_metadata)
                 for i in range(len(actions)):
@@ -288,7 +365,7 @@ class Learner(object):
 
             event_timer.stop()
 
-            if t > 0 and t % 3000 == 0:
+            if t > 0 and t % self.log_frequency == 0:
                 self.logger.record_tabular("steps", t)
                 self.logger.record_tabular("time elapsed", timer() - start_time)
                 self.logger.record_tabular("steps/s", t / (timer() - start_time))
@@ -303,8 +380,10 @@ class Learner(object):
             # fetched_timeline = timeline.Timeline(run_metadata.step_stats)
             # chrome_trace = fetched_timeline.generate_chrome_trace_format()
             # many_runs_timeline.update_timeline(chrome_trace)
+            session.run(self.update_global_step)
 
         many_runs_timeline.save('timeline_merged.json')
+        coord.request_stop()
 
 
 

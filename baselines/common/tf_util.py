@@ -270,15 +270,17 @@ def set_value(v, val):
 # ================================================================
 
 
-def load_state(fname):
-    saver = tf.train.Saver()
-    saver.restore(get_session(), fname)
+def load_state(fname, session=None):
+    with session.graph.as_default():
+        saver = tf.train.Saver()
+        saver.restore(get_session(session=session), fname)
 
 
-def save_state(fname):
+def save_state(fname, session=None):
     os.makedirs(os.path.dirname(fname), exist_ok=True)
-    saver = tf.train.Saver()
-    saver.save(get_session(), fname)
+    with session.graph.as_default():
+        saver = tf.train.Saver()
+        saver.save(get_session(session=session), fname)
 
 # ================================================================
 # Model components
