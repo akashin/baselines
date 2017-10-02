@@ -73,7 +73,7 @@ def main():
     parser.add_argument('--actor_count', help='Worker count', type=int, default=1)
     parser.add_argument('--tf_thread_count', help='TensorFlow threads count', type=int, default=8)
     parser.add_argument('--learning_rate', help='Learning rate', type=float, default=5e-4)
-    parser.add_argument('--exploration_length', help='Exploration length', type=int, default=1e5)
+    parser.add_argument('--num_iterations', help='Number of iterations', type=int, default=1e5)
     parser.add_argument('--env_name', help='Env name', type=str, default='CartPole-v0')
     args = parser.parse_args()
 
@@ -82,7 +82,7 @@ def main():
     config.actor_count = args.actor_count
     config.tf_thread_count = args.tf_thread_count
     config.learning_rate = args.learning_rate
-    config.exploration_length = args.exploration_length
+    config.num_iterations = args.num_iterations
     config.queue_capacity = 2 ** 17
     config.exploration_schedule = "linear"
 

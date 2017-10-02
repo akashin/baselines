@@ -33,8 +33,8 @@ class Config(object):
         self.batch_size = 64
         self.gamma = 0.99
         self.actor_count = 1
-        # self.exploration_length = 50000
-        self.exploration_length = 2e7
+        # self.num_iterations = 50000
+        self.num_iterations = 2e7
         self.exploration_schedule = "linear"
         self.learning_rate = 5e-3
         self.tf_thread_count = 8
@@ -114,15 +114,15 @@ class Actor(object):
             enqueue_op = queue.enqueue([priority_ph, obs_t_input, act_t_ph, rew_t_ph, obs_tp1_input, done_mask_ph])
             self.enqueue = U.function([priority_ph, obs_t_input, act_t_ph, rew_t_ph, obs_tp1_input, done_mask_ph], enqueue_op)
 
-        self.max_iteration_count = int(self.config.exploration_length * 1.5)
+        self.max_iteration_count = self.config.num_iterations
 
         if self.config.exploration_schedule == "linear":
             # Create the schedule for exploration starting from 1 (every action is random) down to
             # 0.02 (98% of actions are selected according to values predicted by the model).
             self.exploration = LinearSchedule(
-                    schedule_timesteps=self.config.exploration_length, initial_p=1.0, final_p=0.02)
+                    schedule_timesteps=self.config.num_iterations / 4, initial_p=1.0, final_p=0.02)
         elif self.config.exploration_schedule == "piecewise":
-            approximate_num_iters = self.config.exploration_length
+            approximate_num_iters = self.config.num_iterations
             self.exploration = PiecewiseSchedule([
                 (0, 1.0),
                 (approximate_num_iters / 50, 0.1),
@@ -226,6 +226,7 @@ class Learner(object):
         self.queue = queue
         self.logger = logger
         self.save_path = save_path
+        self.batch_size = config.batch_size
 
         queue_size_op = self.queue.size()
         self.queue_size = U.function([], queue_size_op)
@@ -258,7 +259,7 @@ class Learner(object):
                     reuse=False)
 
         self.num_iters = 0
-        self.max_iteration_count = int(self.config.exploration_length * 2.0)
+        self.max_iteration_count = self.config.num_iterations
 
         self.checkpoint_frequency = max(self.max_iteration_count / 100, 10000)
 
@@ -313,15 +314,14 @@ class Learner(object):
             chrome_trace = fetched_timeline.generate_chrome_trace_format()
             many_runs_timeline.update_timeline(chrome_trace)
 
-        global_step = session.run(self.global_step)
-        self.num_iters = global_step
-        print("Starting training from step {}".format(global_step))
-        for t in range(global_step, self.max_iteration_count):
+        start_step = session.run(self.global_step)
+        print("Starting training from step {}".format(start_step))
+        for t in range(start_step, self.max_iteration_count):
             # should_trace = t > 0 and (t % 1 == 0)
             should_trace = False
             should_profile = t > 0 and (t % self.log_frequency == 0)
 
-            if t != global_step and t % self.checkpoint_frequency == 0:
+            if t != start_step and t % self.checkpoint_frequency == 0:
                 self.num_iters = t
                 self.save(self.save_path, session)
 
@@ -366,13 +366,16 @@ class Learner(object):
             event_timer.stop()
 
             if t > 0 and t % self.log_frequency == 0:
-                self.logger.record_tabular("steps", t)
+                steps_per_second = (t - start_step) / (timer() - start_time)
+                frames_per_second = self.batch_size * steps_per_second
+                self.logger.record_tabular("step", t)
                 self.logger.record_tabular("time elapsed", timer() - start_time)
-                self.logger.record_tabular("steps/s", t / (timer() - start_time))
+                self.logger.record_tabular("steps/s", steps_per_second)
+                self.logger.record_tabular("frames/s", frames_per_second)
                 self.logger.record_tabular("queue_size", self.queue_size(session=session))
                 self.logger.record_tabular("batch_mean_td_error", np.mean(td_error))
                 self.logger.record_tabular("batch_max_td_error", np.max(td_error))
-                self.logger.record_tabular("td_error", str(td_error))
+                # self.logger.record_tabular("td_error", str(td_error))
                 event_timer.print_shares(self.logger)
                 event_timer.print_averages(self.logger)
                 self.logger.dump_tabular()
