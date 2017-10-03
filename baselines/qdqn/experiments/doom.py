@@ -86,8 +86,9 @@ def main():
     config.queue_capacity = 2 ** 17
     config.exploration_schedule = "linear"
 
-    ALGO = "QDQN_SCALED"
-    log_dir = "./results/{}_{}{}".format(ALGO, escaped(args.env_name), config)
+    ALGO = "QDQN"
+    env_dir = "./results/{}".format(escaped(args.env_name))
+    log_dir = os.path.join(env_dir, "{}{}".format(ALGO, config))
 
     print("Running training with arguments: {} and log_dir: {}".format(args, log_dir))
 

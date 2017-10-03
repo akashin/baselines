@@ -41,6 +41,7 @@ class Config(object):
         self.target_update_frequency = 200
         self.params_update_frequency = 1000
         self.queue_capacity = 2 ** 17
+        self.replay_buffer_size = int(1e6 / 20)
 
     def __repr__(self):
         s = ''
@@ -266,7 +267,7 @@ class Learner(object):
         self.log_frequency = 3000
 
         # Create the replay buffer
-        self.replay_buffer = ReplayBuffer(int(1e6 / 16))
+        self.replay_buffer = ReplayBuffer(config.replay_buffer_size)
 
     def load(self, path, session):
         """Load model if present at the specified path."""

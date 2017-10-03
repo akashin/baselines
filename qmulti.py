@@ -58,6 +58,35 @@ def run_doom_sweep(args, learning_rates=None, batch_sizes=None):
                     tf_thread_count=args.tf_thread_count,
                     env=args.env)
 
+def run_atari(batch_size=32, learning_rate=1e-4, actor_count=1, tf_thread_count=8, env='PongNoFrameskip-v4'):
+    print("Starting doom training")
+    f = python3["-m", "baselines.qdqn.experiments.train_atari",
+            "--batch_size={}".format(batch_size),
+            "--learning_rate={}".format(learning_rate),
+            "--actor_count={}".format(actor_count),
+            "--tf_thread_count={}".format(tf_thread_count),
+            "--num_iterations={}".format(int(2e8)),
+            "--env_name={}".format(env)] & BG(stdout=sys.stdout, stderr=sys.stderr)
+    #taskset -cp $i $pid
+    wait_for(f)
+
+def run_atari_sweep(args, learning_rates=None, batch_sizes=None):
+    if not learning_rates:
+        learning_rates = [args.learning_rate]
+
+    if not batch_sizes:
+        batch_sizes = [args.batch_size]
+
+    print("Running doom sweep with {} parameter(s)".format(len(learning_rates) * len(batch_sizes)))
+
+    for batch_size in batch_sizes:
+        for learning_rate in learning_rates:
+            run_atari(batch_size=batch_size,
+                    learning_rate=learning_rate,
+                    actor_count=args.actor_count,
+                    tf_thread_count=args.tf_thread_count,
+                    env=args.env)
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--batch_size", type=int, default=32)
@@ -79,6 +108,9 @@ def main():
                 # args,
                 # batch_sizes=[32, 64, 128, 256],
                 # learning_rates=[1e-4, 5e-4, 1e-3, 5e-3, 1e-2])
+    else:
+        run_atari_sweep(args)
+
 
 
 
