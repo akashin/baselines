@@ -59,7 +59,7 @@ def run_doom_sweep(args, learning_rates=None, batch_sizes=None):
                     env=args.env)
 
 def run_atari(batch_size=32, learning_rate=1e-4, actor_count=1, tf_thread_count=8, env='PongNoFrameskip-v4'):
-    print("Starting doom training")
+    print("Starting Atari training")
     f = python3["-m", "baselines.qdqn.experiments.train_atari",
             "--batch_size={}".format(batch_size),
             "--learning_rate={}".format(learning_rate),
@@ -77,7 +77,7 @@ def run_atari_sweep(args, learning_rates=None, batch_sizes=None):
     if not batch_sizes:
         batch_sizes = [args.batch_size]
 
-    print("Running doom sweep with {} parameter(s)".format(len(learning_rates) * len(batch_sizes)))
+    print("Running Atari sweep with {} parameter(s)".format(len(learning_rates) * len(batch_sizes)))
 
     for batch_size in batch_sizes:
         for learning_rate in learning_rates:
