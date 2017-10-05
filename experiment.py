@@ -58,11 +58,11 @@ def run_doom_dqn(batch_size=32, learning_rate=1e-4, train_frequency=4,
             "--batch_size={}".format(batch_size),
             "--train_frequency={}".format(train_frequency),
             "--learning_rate={}".format(learning_rate),
-            "--worker_count={}".format(args.thread_count),
+            "--worker_count={}".format(worker_count),
             "--target_update_frequency={}".format(target_update_frequency),
             "--num_iterations={}".format(num_iterations),
-            "--tf_thread_count={}".format(args.tf_thread_count),
-            "--env_name={}".format(args.env)] & BG(stdout=sys.stdout, stderr=sys.stderr)
+            "--tf_thread_count={}".format(tf_thread_count),
+            "--env_name={}".format(env)] & BG(stdout=sys.stdout, stderr=sys.stderr)
     #taskset -cp $i $pid
     wait_for(f)
 

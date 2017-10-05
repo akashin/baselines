@@ -99,6 +99,8 @@ class Worker(object):
 
     def run(self, session, coord):
         episode_rewards = [0.0]
+        gradients = []
+        td_errors = []
         obs = self.env.reset()
 
         start_time = timer()
@@ -131,8 +133,13 @@ class Worker(object):
             # Minimize the error in Bellman's equation on a batch sampled from replay buffer.
             if t > 1000 and t % self.config.train_frequency == 0:
                 obses_t, actions, rewards, obses_tp1, dones = self.replay_buffer.sample(self.config.batch_size)
-                self.train(obses_t, actions, rewards, obses_tp1, dones, np.ones_like(rewards),
+                td_error, grad_norm = self.train(obses_t, actions, rewards, obses_tp1, dones, np.ones_like(rewards),
                         session=session)
+                gradients.append(grad_norm)
+                td_errors.append(np.mean(td_error))
+                # if (t / self.config.train_frequency) % 10 == 0:
+                    # print("mean TD error: {}".format(np.mean(td_error)))
+                    # print("Gradient norm: {}".format(grad_norm))
                 event_timer.measure('train')
 
             # Update target network periodically.
@@ -146,6 +153,8 @@ class Worker(object):
                 logger.record_tabular("steps", t)
                 logger.record_tabular("episodes", len(episode_rewards))
                 logger.record_tabular("mean episode reward", round(np.mean(episode_rewards[-101:-1]), 1))
+                logger.record_tabular("mean gradient", round(np.mean(gradients[-101:-1]), 5))
+                logger.record_tabular("mean td_error", round(np.mean(td_errors[-101:-1]), 5))
                 logger.record_tabular("time elapsed", timer() - start_time)
                 logger.record_tabular("steps/s", t / (timer() - start_time))
                 logger.record_tabular("% time spent exploring", int(100 * self.exploration.value(t)))

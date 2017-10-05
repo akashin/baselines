@@ -414,6 +414,9 @@ def build_train(make_obs_ph, q_func, num_actions, optimizer, train_inputs=None,
         else:
             optimize_expr = optimizer.minimize(weighted_error, var_list=q_func_vars)
 
+        grads = optimizer.compute_gradients(weighted_error, var_list=q_func_vars)
+        gradients_norm = tf.norm([tf.norm(g) for (g, var) in grads])
+
         # update_target_fn will be called periodically to copy Q network to target Q network
         update_target_expr = []
         for var, var_target in zip(sorted(q_func_vars, key=lambda v: v.name),
@@ -436,7 +439,7 @@ def build_train(make_obs_ph, q_func, num_actions, optimizer, train_inputs=None,
 
         train = U.function(
             inputs=inputs,
-            outputs=td_error,
+            outputs=[td_error, gradients_norm],
             updates=[optimize_expr]
         )
         update_target = U.function([], [], updates=[update_target_expr])

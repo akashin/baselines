@@ -163,15 +163,11 @@ class Actor(object):
             action = self.act(np.array(obs)[None], update_eps=exploration_value, session=session)[0]
             if done and len(episode_rewards) % self.log_frequency == 0:
                 print(self.debug["q_values"](np.array(obs)[None], session=session))
-                # self.update_params(session=session)
-                # print(self.debug["q_values"](obs[None], session=session))
 
             event_timer.measure('act')
             new_obs, rew, done, _ = self.env.step(action)
             event_timer.measure('step')
-            # Store transition in the replay buffer.
             self.enqueue(obs, action, rew, new_obs, float(done), global_step, session=session)
-            # self.replay_buffer.add(obs, action, rew, new_obs, float(done))
             obs = new_obs
 
             episode_rewards[-1] += rew
@@ -371,6 +367,9 @@ class Learner(object):
         start_time = timer()
         event_timer = EventTimer()
 
+        gradients = []
+        td_errors = []
+
         many_runs_timeline = TimeLiner()
         def process_trace(run_metadata, many_runs_timeline):
             fetched_timeline = timeline.Timeline(run_metadata.step_stats)
@@ -397,8 +396,13 @@ class Learner(object):
             if should_profile: event_timer.start()
 
             # Minimize the error in Bellman's equation on a batch sampled from replay buffer.
-            td_error = self.train(np.ones(self.batch_size),
+            td_error, grad_norm = self.train(np.ones(self.batch_size),
                     session=session, options=options, run_metadata=run_metadata)
+            gradients.append(grad_norm)
+            td_errors.append(np.mean(td_error))
+
+            if t > 500 and t % 100 == 0:
+                print("Gradient norm: {}".format(grad_norm))
             if should_profile: event_timer.measure('train')
             if should_trace: process_trace(run_metadata, many_runs_timeline)
 
@@ -418,8 +422,10 @@ class Learner(object):
                 self.logger.record_tabular("steps/s", steps_per_second)
                 self.logger.record_tabular("frames/s", frames_per_second)
                 self.logger.record_tabular("queue_size", self.queue_size(session=session))
-                self.logger.record_tabular("batch_mean_td_error", np.mean(td_error))
                 self.logger.record_tabular("batch_max_td_error", np.max(td_error))
+                self.logger.record_tabular("batch_min_td_error", np.min(td_error))
+                logger.record_tabular("mean gradient", round(np.mean(gradients[-101:-1]), 5))
+                logger.record_tabular("mean td_error", round(np.mean(td_errors[-101:-1]), 5))
                 # self.logger.record_tabular("td_error", str(td_error))
                 event_timer.print_shares(self.logger)
                 event_timer.print_averages(self.logger)
