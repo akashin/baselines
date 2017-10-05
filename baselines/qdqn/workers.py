@@ -401,8 +401,6 @@ class Learner(object):
             gradients.append(grad_norm)
             td_errors.append(np.mean(td_error))
 
-            if t > 500 and t % 100 == 0:
-                print("Gradient norm: {}".format(grad_norm))
             if should_profile: event_timer.measure('train')
             if should_trace: process_trace(run_metadata, many_runs_timeline)
 

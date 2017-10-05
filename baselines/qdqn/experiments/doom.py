@@ -99,7 +99,7 @@ def main():
     config.exploration_schedule = "linear"
     config.target_update_frequency = args.target_update_frequency
 
-    ALGO = "QDQN_INT8"
+    ALGO = "QDQN"
     env_dir = "./results/{}".format(escaped(args.env_name))
     log_dir = os.path.join(env_dir, "{}{}".format(ALGO, config))
 

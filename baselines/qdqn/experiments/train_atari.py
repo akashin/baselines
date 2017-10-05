@@ -32,6 +32,7 @@ def main():
     parser.add_argument('--actor_count', help='Worker count', type=int, default=1)
     parser.add_argument('--tf_thread_count', help='TensorFlow threads count', type=int, default=8)
     parser.add_argument('--learning_rate', help='Learning rate', type=float, default=5e-4)
+    parser.add_argument('--target_update_frequency', help='Target update frequency', type=int, default=500)
     parser.add_argument('--num_iterations', help='Number of iterations', type=int, default=1e5)
     parser.add_argument('--env_name', help='Env name', type=str, default='CartPole-v0')
     args = parser.parse_args()
