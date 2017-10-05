@@ -46,7 +46,7 @@ class PreprocessImage(ObservationWrapper):
 
 class ScaleRewardEnv(gym.RewardWrapper):
     def _reward(self, reward):
-        return reward / 400.0
+        return reward
 
 
 def make_env(env_name, seed):
