@@ -43,7 +43,7 @@ class Config(object):
         self.target_update_frequency = 500
         self.params_update_frequency = 100
         self.queue_capacity = 2 ** 17
-        self.replay_buffer_size = int(1e6 / 20)
+        self.replay_buffer_size = 50000
 
     def __repr__(self):
         s = ''

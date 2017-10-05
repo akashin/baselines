@@ -92,6 +92,8 @@ def run_doom_sweep(args, learning_rates=None, batch_sizes=None):
                         target_update_frequency=args.target_update_frequency,
                         num_iterations=args.num_iterations,
                         env=args.env)
+            else:
+                raise ValueError("Invalid algo: {}".format(args.algo))
 
 def run_atari(batch_size=32, learning_rate=1e-4, actor_count=1, tf_thread_count=8,
         target_update_frequency=1000, env='PongNoFrameskip-v4'):
@@ -133,7 +135,7 @@ def main():
     parser.add_argument("--tf_thread_count", type=int, default=8)
     parser.add_argument("--target_update_frequency", type=int, default=500)
     parser.add_argument("--num_iterations", type=int, default=None)
-    parser.add_argument("--algo", type=str, default="QDQN")
+    parser.add_argument("--algo", type=str, default="qdqn")
     parser.add_argument("--env", type=str, default="Pong-v0")
     args = parser.parse_args()
 
