@@ -40,11 +40,11 @@ def main():
     # train_frequencies = [2]
 
     # batch_sizes = [32, 64, 128, 256]
-    batch_sizes = [32]
+    batch_sizes = [64]
     # learning_rates = [1e-4, 5e-4, 1e-3, 5e-3, 1e-2]
     learning_rates = [1e-4]
     # train_frequencies = [2, 4]
-    train_frequencies = [2]
+    train_frequencies = [4]
 
     for train_frequency in train_frequencies:
         for batch_size in batch_sizes:

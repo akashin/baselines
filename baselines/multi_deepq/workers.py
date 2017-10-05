@@ -22,7 +22,7 @@ class Config(object):
         self.batch_size = 32
         self.gamma = 0.99
         self.replay_size = 50000
-        self.exploration_length = 50000
+        self.exploration_length = 10000
         self.learning_rate = 5e-4
         self.worker_count = 1
         self.tf_thread_count = 8
@@ -81,7 +81,7 @@ class Worker(object):
         self.env = env
         self.should_render = should_render
         self.act, self.train, self.update_target, self.debug = multi_deepq.build_train(
-                make_obs_ph=lambda name: U.BatchInput(env.observation_space.shape, name=name),
+                make_obs_ph=lambda name: U.Uint8Input(env.observation_space.shape, name=name),
                 q_func=model,
                 num_actions=env.action_space.n,
                 gamma=config.gamma,
@@ -89,13 +89,13 @@ class Worker(object):
                 reuse=(not is_chief),
                 )
 
-        self.max_iteraction_count = int(self.config.exploration_length * 1.5)
+        self.max_iteraction_count = int(self.config.exploration_length)
 
         # Create the replay buffer
         self.replay_buffer = ReplayBuffer(config.replay_size)
         # Create the schedule for exploration starting from 1 (every action is random) down to
         # 0.02 (98% of actions are selected according to values predicted by the model).
-        self.exploration = LinearSchedule(schedule_timesteps=self.config.exploration_length, initial_p=1.0, final_p=0.02)
+        self.exploration = LinearSchedule(schedule_timesteps=self.config.exploration_length / 4.0, initial_p=1.0, final_p=0.02)
 
     def run(self, session, coord):
         episode_rewards = [0.0]

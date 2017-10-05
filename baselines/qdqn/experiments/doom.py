@@ -45,8 +45,12 @@ class PreprocessImage(ObservationWrapper):
 
 
 class ScaleRewardEnv(gym.RewardWrapper):
+    def __init__(self, env, scale):
+        super(ScaleRewardEnv, self).__init__(env)
+        self.scale = scale
+
     def _reward(self, reward):
-        return reward
+        return reward / self.scale
 
 
 def make_env(env_name, seed):
@@ -57,7 +61,12 @@ def make_env(env_name, seed):
         env = SetResolution('160x120')(env)
         env = PreprocessImage((SkipWrapper(4)(ToDiscrete("minimal")(env))),
                 width=80, height=80)
-        return ScaleRewardEnv(env)
+
+        scale = 1.0
+        if 'DoomBasic' in env_name:
+            scale = 400.0
+
+        return ScaleRewardEnv(env, scale)
 
     # env = ExternalProcess(_make_env)
     env = _make_env()
@@ -77,6 +86,7 @@ def main():
     parser.add_argument('--target_update_frequency', help='Target update frequency', type=int, default=500)
     parser.add_argument('--num_iterations', help='Number of iterations', type=int, default=1e5)
     parser.add_argument('--env_name', help='Env name', type=str, default='CartPole-v0')
+    parser.add_argument('--cleanup', help='Should cleanup before start?', type=bool, default=False)
     args = parser.parse_args()
 
     config = Config()
@@ -97,7 +107,8 @@ def main():
 
     make_env_fn = lambda seed: make_env(args.env_name, seed)
 
-    train_qdqn(config=config, log_dir=log_dir, make_env=make_env_fn, model=conv_model)
+    train_qdqn(config=config, log_dir=log_dir, make_env=make_env_fn, model=conv_model,
+            cleanup=args.cleanup)
 
 
 if __name__ == '__main__':

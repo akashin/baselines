@@ -30,7 +30,10 @@ def wait_for(process):
         print("Process failed with {}".format(e))
 
 def run_doom(batch_size=32, learning_rate=1e-4, actor_count=1, tf_thread_count=8, 
-        target_update_frequency=500, env='ppaquette/BasicDoom-v0'):
+        target_update_frequency=500, num_iterations=None, env='ppaquette/BasicDoom-v0'):
+    if num_iterations is None:
+        num_iterations = 2500
+
     print("Starting doom training")
     f = python3["-m", "baselines.qdqn.experiments.doom",
             "--batch_size={}".format(batch_size),
@@ -38,7 +41,8 @@ def run_doom(batch_size=32, learning_rate=1e-4, actor_count=1, tf_thread_count=8
             "--actor_count={}".format(actor_count),
             "--tf_thread_count={}".format(tf_thread_count),
             "--target_update_frequency={}".format(target_update_frequency),
-            "--num_iterations={}".format(500000),
+            "--num_iterations={}".format(num_iterations),
+            "--cleanup={}".format(True),
             "--env_name={}".format(env)] & BG(stdout=sys.stdout, stderr=sys.stderr)
     #taskset -cp $i $pid
     wait_for(f)
@@ -59,6 +63,7 @@ def run_doom_sweep(args, learning_rates=None, batch_sizes=None):
                     actor_count=args.actor_count,
                     tf_thread_count=args.tf_thread_count,
                     target_update_frequency=args.target_update_frequency,
+                    num_iterations=args.num_iterations,
                     env=args.env)
 
 def run_atari(batch_size=32, learning_rate=1e-4, actor_count=1, tf_thread_count=8,
@@ -100,6 +105,7 @@ def main():
     parser.add_argument("--actor_count", type=int, default=1)
     parser.add_argument("--tf_thread_count", type=int, default=8)
     parser.add_argument("--target_update_frequency", type=int, default=500)
+    parser.add_argument("--num_iterations", type=int, default=None)
     parser.add_argument("--env", type=str, default='Pong-v0')
     args = parser.parse_args()
 

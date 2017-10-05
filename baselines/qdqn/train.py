@@ -8,6 +8,8 @@ from baselines import logger
 
 import threading
 
+import shutil
+
 from tensorflow.contrib.staging import StagingArea
 
 from baselines.qdqn.workers import Learner, Actor, Trainer
@@ -36,7 +38,10 @@ def create_trainer_logger(base_dir):
     return create_logger(trainer_dir(base_dir))
 
 
-def train_qdqn(config, log_dir, make_env, model):
+def train_qdqn(config, log_dir, make_env, model, cleanup=False):
+    if cleanup:
+        shutil.rmtree(log_dir, ignore_errors=True)
+
     np.random.seed(42)
     tf.set_random_seed(7)
 

@@ -41,7 +41,7 @@ class Config(object):
         self.learning_rate = 5e-3
         self.tf_thread_count = 8
         self.target_update_frequency = 500
-        self.params_update_frequency = 1000
+        self.params_update_frequency = 100
         self.queue_capacity = 2 ** 17
         self.replay_buffer_size = int(1e6 / 20)
 
@@ -99,6 +99,8 @@ class Actor(object):
         self.should_render = should_render
         self.logger = logger
 
+        self.log_frequency = 10
+
         with tf.device('/cpu:0'):
             self.act, self.update_params, self.debug = qdqn.build_act(
                     make_obs_ph=lambda name: U.Uint8Input(env.observation_space.shape, name=name),
@@ -155,11 +157,11 @@ class Actor(object):
                 global_step = session.run(self.global_step)
                 exploration_value = self.exploration.value(global_step)
 
-            if t > 0 and t % 10 == 0:
+            if t > 0 and t % 500 == 0:
                 event_timer.start()
             # Take action and update exploration to the newest value
             action = self.act(np.array(obs)[None], update_eps=exploration_value, session=session)[0]
-            if done and len(episode_rewards) % 50 == 0:
+            if done and len(episode_rewards) % self.log_frequency == 0:
                 print(self.debug["q_values"](np.array(obs)[None], session=session))
                 # self.update_params(session=session)
                 # print(self.debug["q_values"](obs[None], session=session))
@@ -192,7 +194,7 @@ class Actor(object):
 
             event_timer.stop()
 
-            if self.is_chief and done and len(episode_rewards) % 50 == 0:
+            if self.is_chief and done and len(episode_rewards) % self.log_frequency == 0:
                 self.logger.record_tabular("steps", t)
                 self.logger.record_tabular("global_step", global_step)
                 self.logger.record_tabular("episodes", len(episode_rewards))
@@ -327,7 +329,7 @@ class Learner(object):
 
         self.checkpoint_frequency = max(self.max_iteration_count / 1000, 10000)
 
-        self.log_frequency = 2000
+        self.log_frequency = 300
 
     def load(self, path, session):
         """Load model if present at the specified path."""

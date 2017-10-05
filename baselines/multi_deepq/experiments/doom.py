@@ -44,15 +44,20 @@ class PreprocessImage(ObservationWrapper):
         img = imresize(img, self.img_size)
         if self.grayscale:
             img = img.mean(-1, keepdims=True)
+        img = img.astype('int8')
         # img = np.transpose(img, (2, 0, 1))  # reshape from (h,w,colors) to (colors,h,w)
-        img = img.astype('float32') / 255.
+        # img = img.astype('float32') / 255.
         # img = np.squeeze(img)
         return img
 
 
 class ScaleRewardEnv(gym.RewardWrapper):
+    def __init__(self, env, scale):
+        super(ScaleRewardEnv, self).__init__(env)
+        self.scale = scale
+
     def _reward(self, reward):
-        return reward / 400.0
+        return reward / self.scale
 
 
 def make_env(env_name, seed):
@@ -63,7 +68,12 @@ def make_env(env_name, seed):
         env = SetResolution('160x120')(env)
         env = PreprocessImage((SkipWrapper(4)(ToDiscrete("minimal")(env))),
                 width=80, height=80)
-        return ScaleRewardEnv(env)
+
+        scale = 1.0
+        if 'DoomBasic' in env_name:
+            scale = 400.0
+
+        return ScaleRewardEnv(env, scale)
 
     # env = ExternalProcess(_make_env)
     env = _make_env()
