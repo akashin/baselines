@@ -38,7 +38,8 @@ class PreprocessImage(ObservationWrapper):
         if self.grayscale:
             img = img.mean(-1, keepdims=True)
         # img = np.transpose(img, (2, 0, 1))  # reshape from (h,w,colors) to (colors,h,w)
-        img = img.astype('float32') / 255.
+        img = img.astype('int8')
+        # img = img.astype('float32') / 255.
         # img = np.squeeze(img)
         return img
 
@@ -86,7 +87,7 @@ def main():
     config.queue_capacity = 2 ** 17
     config.exploration_schedule = "linear"
 
-    ALGO = "QDQN"
+    ALGO = "QDQN_INT8"
     env_dir = "./results/{}".format(escaped(args.env_name))
     log_dir = os.path.join(env_dir, "{}{}".format(ALGO, config))
 

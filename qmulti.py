@@ -36,7 +36,7 @@ def run_doom(batch_size=32, learning_rate=1e-4, actor_count=1, tf_thread_count=8
             "--learning_rate={}".format(learning_rate),
             "--actor_count={}".format(actor_count),
             "--tf_thread_count={}".format(tf_thread_count),
-            "--num_iterations={}".format(20000),
+            "--num_iterations={}".format(10000),
             "--env_name={}".format(env)] & BG(stdout=sys.stdout, stderr=sys.stderr)
     #taskset -cp $i $pid
     wait_for(f)
@@ -65,7 +65,7 @@ def run_atari(batch_size=32, learning_rate=1e-4, actor_count=1, tf_thread_count=
             "--learning_rate={}".format(learning_rate),
             "--actor_count={}".format(actor_count),
             "--tf_thread_count={}".format(tf_thread_count),
-            "--num_iterations={}".format(int(2e8)),
+            "--num_iterations={}".format(int(5e7)),
             "--env_name={}".format(env)] & BG(stdout=sys.stdout, stderr=sys.stderr)
     #taskset -cp $i $pid
     wait_for(f)

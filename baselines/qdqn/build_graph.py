@@ -297,8 +297,9 @@ def build_act_with_param_noise(make_obs_ph, q_func, num_actions, scope="deepq", 
         return act
 
 
-def build_train(make_obs_ph, q_func, num_actions, optimizer, grad_norm_clipping=None, gamma=1.0,
-    double_q=True, scope="deepq", reuse=None, param_noise=False, param_noise_filter_func=None):
+def build_train(make_obs_ph, q_func, num_actions, optimizer, train_inputs=None,
+        grad_norm_clipping=None, gamma=1.0, double_q=True, scope="deepq", reuse=None,
+        param_noise=False, param_noise_filter_func=None):
     """Creates the train function:
 
     Parameters
@@ -361,19 +362,27 @@ def build_train(make_obs_ph, q_func, num_actions, optimizer, grad_norm_clipping=
 
     with tf.variable_scope(scope, reuse=reuse):
         # set up placeholders
-        obs_t_input = U.ensure_tf_input(make_obs_ph("obs_t"))
-        act_t_ph = tf.placeholder(tf.int32, [None], name="action")
-        rew_t_ph = tf.placeholder(tf.float32, [None], name="reward")
-        obs_tp1_input = U.ensure_tf_input(make_obs_ph("obs_tp1"))
-        done_mask_ph = tf.placeholder(tf.float32, [None], name="done")
+        if train_inputs is not None:
+            obs_t_input, act_t_ph, rew_t_ph, obs_tp1_input, done_mask_ph = train_inputs
+            obs_t_input_op = tf.cast(obs_t_input, tf.float32) / 255.0
+            obs_tp1_input_op = tf.cast(obs_tp1_input, tf.float32) / 255.0
+        else:
+            obs_t_input = U.ensure_tf_input(make_obs_ph("obs_t"))
+            act_t_ph = tf.placeholder(tf.int32, [None], name="action")
+            rew_t_ph = tf.placeholder(tf.float32, [None], name="reward")
+            obs_tp1_input = U.ensure_tf_input(make_obs_ph("obs_tp1"))
+            done_mask_ph = tf.placeholder(tf.float32, [None], name="done")
+            obs_t_input_op = obs_t_input.get()
+            obs_tp1_input_op = obs_tp1_input.get()
+
         importance_weights_ph = tf.placeholder(tf.float32, [None], name="weight")
 
         # q network evaluation
-        q_t = q_func(obs_t_input.get(), num_actions, scope="q_func", reuse=True)  # reuse parameters from act
+        q_t = q_func(obs_t_input_op, num_actions, scope="q_func", reuse=True)  # reuse parameters from act
         q_func_vars = U.scope_vars(U.absolute_scope_name("q_func"))
 
         # target q network evalution
-        q_tp1 = q_func(obs_tp1_input.get(), num_actions, scope="target_q_func")
+        q_tp1 = q_func(obs_tp1_input_op, num_actions, scope="target_q_func")
         target_q_func_vars = U.scope_vars(U.absolute_scope_name("target_q_func"))
 
         # q scores for actions which we know were selected in the given state.
@@ -381,8 +390,8 @@ def build_train(make_obs_ph, q_func, num_actions, optimizer, grad_norm_clipping=
 
         # compute estimate of best possible value starting from state at t + 1
         if double_q:
-            q_tp1_using_online_net = q_func(obs_tp1_input.get(), num_actions, scope="q_func", reuse=True)
-            q_tp1_best_using_online_net = tf.arg_max(q_tp1_using_online_net, 1)
+            q_tp1_using_online_net = q_func(obs_tp1_input_op, num_actions, scope="q_func", reuse=True)
+            q_tp1_best_using_online_net = tf.argmax(q_tp1_using_online_net, 1)
             q_tp1_best = tf.reduce_sum(q_tp1 * tf.one_hot(q_tp1_best_using_online_net, num_actions), 1)
         else:
             q_tp1_best = tf.reduce_max(q_tp1, 1)
@@ -413,20 +422,25 @@ def build_train(make_obs_ph, q_func, num_actions, optimizer, grad_norm_clipping=
         update_target_expr = tf.group(*update_target_expr)
 
         # Create callable functions
-        train = U.function(
+        if train_inputs is not None:
+            inputs = []
+        else:
             inputs=[
                 obs_t_input,
                 act_t_ph,
                 rew_t_ph,
                 obs_tp1_input,
                 done_mask_ph,
-                importance_weights_ph
-            ],
+            ]
+        inputs.append(importance_weights_ph)
+
+        train = U.function(
+            inputs=inputs,
             outputs=td_error,
             updates=[optimize_expr]
         )
         update_target = U.function([], [], updates=[update_target_expr])
 
-        q_values = U.function([obs_t_input], q_t)
+        q_values = U.function([U.ensure_tf_input(make_obs_ph("obs_t"))], q_t)
 
         return act_f, train, update_target, {'q_values': q_values}
