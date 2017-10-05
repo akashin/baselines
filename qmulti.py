@@ -29,14 +29,16 @@ def wait_for(process):
     except plumbum.commands.processes.ProcessExecutionError as e:
         print("Process failed with {}".format(e))
 
-def run_doom(batch_size=32, learning_rate=1e-4, actor_count=1, tf_thread_count=8, env='ppaquette/BasicDoom-v0'):
+def run_doom(batch_size=32, learning_rate=1e-4, actor_count=1, tf_thread_count=8, 
+        target_update_frequency=500, env='ppaquette/BasicDoom-v0'):
     print("Starting doom training")
     f = python3["-m", "baselines.qdqn.experiments.doom",
             "--batch_size={}".format(batch_size),
             "--learning_rate={}".format(learning_rate),
             "--actor_count={}".format(actor_count),
             "--tf_thread_count={}".format(tf_thread_count),
-            "--num_iterations={}".format(10000),
+            "--target_update_frequency={}".format(target_update_frequency),
+            "--num_iterations={}".format(20000),
             "--env_name={}".format(env)] & BG(stdout=sys.stdout, stderr=sys.stderr)
     #taskset -cp $i $pid
     wait_for(f)
@@ -56,15 +58,18 @@ def run_doom_sweep(args, learning_rates=None, batch_sizes=None):
                     learning_rate=learning_rate,
                     actor_count=args.actor_count,
                     tf_thread_count=args.tf_thread_count,
+                    target_update_frequency=args.target_update_frequency,
                     env=args.env)
 
-def run_atari(batch_size=32, learning_rate=1e-4, actor_count=1, tf_thread_count=8, env='PongNoFrameskip-v4'):
+def run_atari(batch_size=32, learning_rate=1e-4, actor_count=1, tf_thread_count=8,
+        target_update_frequency=1000, env='PongNoFrameskip-v4'):
     print("Starting Atari training")
     f = python3["-m", "baselines.qdqn.experiments.train_atari",
             "--batch_size={}".format(batch_size),
             "--learning_rate={}".format(learning_rate),
             "--actor_count={}".format(actor_count),
             "--tf_thread_count={}".format(tf_thread_count),
+            "--target_update_frequency={}".format(target_update_frequency),
             "--num_iterations={}".format(int(5e7)),
             "--env_name={}".format(env)] & BG(stdout=sys.stdout, stderr=sys.stderr)
     #taskset -cp $i $pid
@@ -85,6 +90,7 @@ def run_atari_sweep(args, learning_rates=None, batch_sizes=None):
                     learning_rate=learning_rate,
                     actor_count=args.actor_count,
                     tf_thread_count=args.tf_thread_count,
+                    target_update_frequency=args.target_update_frequency,
                     env=args.env)
 
 def main():
@@ -93,6 +99,7 @@ def main():
     parser.add_argument("--learning_rate", type=float, default=1e-4)
     parser.add_argument("--actor_count", type=int, default=1)
     parser.add_argument("--tf_thread_count", type=int, default=8)
+    parser.add_argument("--target_update_frequency", type=int, default=500)
     parser.add_argument("--env", type=str, default='Pong-v0')
     args = parser.parse_args()
 

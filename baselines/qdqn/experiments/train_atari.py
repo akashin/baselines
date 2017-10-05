@@ -19,7 +19,7 @@ from gym.spaces.box import Box
 def make_env(env_name, seed):
     env = gym.make(env_name)
     env.seed(seed)
-    return ScaledFloatFrame(wrap_dqn(env))
+    return wrap_dqn(env)
 
 
 def escaped(env_name):

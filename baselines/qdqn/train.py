@@ -58,7 +58,7 @@ def train_qdqn(config, log_dir, make_env, model):
                 batch_shape,
                 batch_shape + list(observation_space.shape),
                 batch_shape],
-            memory_limit=2**31)
+            memory_limit=2**32)
 
     coord = tf.train.Coordinator()
 

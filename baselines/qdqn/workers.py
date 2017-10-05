@@ -40,7 +40,7 @@ class Config(object):
         self.exploration_schedule = "linear"
         self.learning_rate = 5e-3
         self.tf_thread_count = 8
-        self.target_update_frequency = 200
+        self.target_update_frequency = 500
         self.params_update_frequency = 1000
         self.queue_capacity = 2 ** 17
         self.replay_buffer_size = int(1e6 / 20)
@@ -159,8 +159,8 @@ class Actor(object):
                 event_timer.start()
             # Take action and update exploration to the newest value
             action = self.act(np.array(obs)[None], update_eps=exploration_value, session=session)[0]
-            if done and len(episode_rewards) % 10 == 0:
-                print(self.debug["q_values"](obs[None], session=session))
+            if done and len(episode_rewards) % 50 == 0:
+                print(self.debug["q_values"](np.array(obs)[None], session=session))
                 # self.update_params(session=session)
                 # print(self.debug["q_values"](obs[None], session=session))
 
@@ -192,7 +192,7 @@ class Actor(object):
 
             event_timer.stop()
 
-            if self.is_chief and done and len(episode_rewards) % 10 == 0:
+            if self.is_chief and done and len(episode_rewards) % 50 == 0:
                 self.logger.record_tabular("steps", t)
                 self.logger.record_tabular("global_step", global_step)
                 self.logger.record_tabular("episodes", len(episode_rewards))
@@ -225,47 +225,6 @@ class TimeLiner:
             json.dump(self._timeline_dict, f)
 
 
-class TFReplayBuffer(object):
-    def __init__(self, replay_buffer_size, observation_space, action_space):
-        self.capacity = replay_buffer_size
-
-        with tf.variable_scope("replay_buffer"):
-            self.current_size = tf.Variable(0, "buffer_size")
-            self.size = U.function([], self.current_size)
-
-            batch_shape = []
-            self.observations = tf.TensorArray(element_shape=(batch_shape + list(observation_space.shape), dtype==np.float32),
-                    name="observations")
-            self.actions = tf.TensorArray(element_shape=(batch_shape + list(action_space.shape), dtype==np.int32),
-                    name="actions")
-            self.rewards = tf.TensorArray(element_shape=(batch_shape), dtype==np.float32, name="rewards")
-            self.next_observations = tf.TensorArray(element_shape=(batch_shape + list(observation_space.shape)), dtype==np.float32),
-                    name="next_observations")
-            self.dones = tf.TensorArray(element_shape=(batch_shape), dtype==np.float32, name="dones")
-
-    def add(self, obs_t, act_t, rew_t, obs_tp1, done):
-        ops = tf.group(*[
-            tf.assign(self.observations[self.current_size], obs_t),
-            tf.assign(self.actions[self.current_size], act_t),
-            tf.assign(self.rewards[self.current_size], rew_t),
-            tf.assign(self.next_observations[self.current_size], obs_tp1),
-            tf.assign(self.dones[self.current_size], done),
-        ])
-        with tf.control_dependencies([ops]):
-            increment_size = tf.assign(self.current_size, (self.current_size + 1) % self.capacity)
-
-        return tf.group(*[ops, increment_size])
-
-    def sample(self, batch_size):
-        logits = tf.log(tf.ones([self.current_size], dtype=tf.float32) / tf.cast(self.current_size, tf.float32))
-        indices = tf.multinomial([logits], num_samples=batch_size)
-        return tf.gather(self.observations, indices)[0], \
-                tf.gather(self.actions, indices)[0], \
-                tf.gather(self.rewards, indices)[0], \
-                tf.gather(self.next_observations, indices)[0], \
-                tf.gather(self.dones, indices)[0] \
-
-
 class Trainer(object):
     def __init__(self, config, actor_queue, learner_queue, observation_space, action_space,
             logger):
@@ -274,99 +233,63 @@ class Trainer(object):
         self.logger = logger
 
         self.batch_size = config.batch_size
-        # self.replay_buffer = TFReplayBuffer(config.replay_buffer_size, observation_space,
-                # action_space)
         self.replay_buffer = ReplayBuffer(config.replay_buffer_size)
+        self.enqueue_thread_count = 2
+        self.log_frequency = 50
+
+        self.target_occupancy = 15000 // self.batch_size
+        self.dequeue_size = 128
+        self.enqueue_size = 128 * 2
+        self.min_replay_buffer_size = 1000
+
+        def add_data_to_replay(obs_t_inputs, actions, rewards, obs_tp1_inputs, dones, global_steps):
+            for i in range(len(rewards)):
+                self.replay_buffer.add(obs_t_inputs[i], actions[i], rewards[i], obs_tp1_inputs[i], dones[i])
+
+        def get_data_from_replay():
+            return self.replay_buffer.sample(self.batch_size)
+
+        with tf.device('/gpu:0'):
+            self.learner_queue_size = U.function([], learner_queue.size())
 
         with tf.device('/cpu:0'):
-            batch_shape = [self.batch_size]
-            obs_t_input = tf.placeholder(tf.int8, batch_shape + list(observation_space.shape), name="obs_t")
-            act_t_ph = tf.placeholder(tf.int32, batch_shape + list(action_space.shape), name="action")
-            rew_t_ph = tf.placeholder(tf.float32, batch_shape, name="reward")
-            obs_tp1_input = tf.placeholder(tf.int8, batch_shape + list(observation_space.shape), name="obs_tp1")
-            done_mask_ph = tf.placeholder(tf.float32, batch_shape, name="done")
+            self.actor_queue_size = U.function([], actor_queue.size())
 
-            # add_to_replay_buffer_op = self.replay_buffer.add(obs_t_input, act_t_ph,
-                    # rew_t_ph, obs_tp1_input, done_mask_ph)
-            # self.add_to_replay_buffer = U.function([obs_t_input, act_t_ph, rew_t_ph, obs_tp1_input, done_mask_ph],
-                    # add_to_replay_buffer_op)
+            dequeue_op = actor_queue.dequeue_up_to(self.dequeue_size)
+            add_data_to_replay_op = tf.py_func(add_data_to_replay, dequeue_op, [], stateful=True)
+            self.add_data_to_replay = U.function([], add_data_to_replay_op)
 
-            dequeue_op = actor_queue.dequeue_up_to(256)
-            # obs_t_inputs, actions, rewards, obs_tp1_inputs, dones, global_steps = dequeue_op
-            self.dequeue = U.function([], dequeue_op)
+            self.get_data_from_replay = tf.py_func(get_data_from_replay, [], [tf.int8, tf.int32, tf.float32, tf.int8, tf.float32], stateful=True)
+            enqueue_ops = []
+            for i in range(self.enqueue_thread_count):
+                enqueue_ops.append(learner_queue.put(self.get_data_from_replay))
+            self.enqueue = U.function([], tf.group(*enqueue_ops))
 
-            enqueue_batch_op = learner_queue.put(
-                    [obs_t_input, act_t_ph, rew_t_ph, obs_tp1_input, done_mask_ph])
-
-            self.enqueue = U.function([obs_t_input, act_t_ph, rew_t_ph, obs_tp1_input, done_mask_ph],
-                    enqueue_batch_op)
-
-            actor_queue_size_op = actor_queue.size()
-            self.actor_queue_size = U.function([], actor_queue_size_op)
-
-            learner_queue_size_op = learner_queue.size()
-            self.learner_queue_size = U.function([], learner_queue_size_op)
-
-            # enqueue_op = learner_queue.put(self.replay_buffer.sample(self.batch_size))
-            # self.enqueue = U.function([], enqueue_op)
-
-            # enqueue_ops = []
-            # for i in range(40):
-                # enqueue_op = learner_queue.put(
-                        # [obs_t_inputs, actions, rewards, obs_tp1_inputs, dones])
-                # enqueue_ops.append(enqueue_op)
-            # self.enqueue = U.function([], tf.group(*enqueue_ops))
 
     def run(self, session, coord):
-        t = 0
-        total_sampled = 0
-        last_time = timer()
-        # sample_count = 100
-        target_occupancy = 15000
-
         event_timer = EventTimer()
-        while not coord.should_stop():
-            should_profile = t > 0 and t % 10 == 0
+        for t in itertools.count():
+            if coord.should_stop():
+                break
+
+            should_profile = t > 0 and t % self.log_frequency == 0
             if should_profile: event_timer.start()
 
-            t += 1
-            obs_t_inputs, actions, rewards, obs_tp1_inputs, dones, global_steps = self.dequeue(session=session)
-            for i in range(len(rewards)):
-                # self.add_to_replay_buffer(obs_t_inputs[i], actions[i], rewards[i], obs_tp1_inputs[i], dones[i], session=session)
-                self.replay_buffer.add(obs_t_inputs[i], actions[i], rewards[i], obs_tp1_inputs[i], dones[i])
+            self.add_data_to_replay(session=session)
             if should_profile: event_timer.measure('dequeue')
 
-            if t > 0 and t % 10 == 0:
-                current_time = timer()
-                sample_rate = total_sampled / (current_time - last_time)
-                print("Sample rate: {}".format(sample_rate))
-                last_time = current_time
-                total_sampled = 0
-
-                # if sample_rate < target_rate * 0.9:
-                    # sample_count *= 1.1
-                # elif sample_rate > target_rate * 1.1:
-                    # sample_count /= 1.1
-
-                # print("New sample count: {}".format(sample_count))
-
-            # sample_now = min(int(sample_size), len(self.replay_buffer))
-            # if self.replay_buffer.size(session=session) >= 1000:
-            if len(self.replay_buffer) >= 1000:
-                # queue_size = self.learner_queue_size(session=session)
-                # sample_now = min(max(0, target_occupancy - queue_size), 8096)
-                sample_now = 10000
-                for i in range(sample_now // self.batch_size + 1):
-                    # omg = self.replay_buffer.sample(self.batch_size)
-                    self.enqueue(*self.replay_buffer.sample(self.batch_size), session=session)
-                    # self.enqueue(session=session)
-                    total_sampled += self.batch_size
+            if len(self.replay_buffer) >= self.min_replay_buffer_size:
+                queue_size = self.learner_queue_size(session=session)
+                sample_now = min(max(0, self.target_occupancy - queue_size), self.enqueue_size)
+                for i in range(sample_now // (self.enqueue_thread_count) + 1):
+                    self.enqueue(session=session)
 
                 if should_profile: event_timer.measure('enqueue')
 
             event_timer.stop()
             if should_profile:
                 self.logger.record_tabular("actor_queue_size", self.actor_queue_size(session=session))
+                self.logger.record_tabular("learner_queue_size", self.learner_queue_size(session=session))
                 event_timer.print_shares(self.logger)
                 event_timer.print_averages(self.logger)
                 self.logger.dump_tabular()
@@ -404,7 +327,7 @@ class Learner(object):
 
         self.checkpoint_frequency = max(self.max_iteration_count / 1000, 10000)
 
-        self.log_frequency = 500
+        self.log_frequency = 2000
 
     def load(self, path, session):
         """Load model if present at the specified path."""
