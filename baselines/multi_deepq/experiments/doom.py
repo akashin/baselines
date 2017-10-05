@@ -91,6 +91,8 @@ def main():
     parser.add_argument('--tf_thread_count', help='TensorFlow threads count', type=int, default=8)
     parser.add_argument('--learning_rate', help='Learning rate', type=float, default=5e-4)
     parser.add_argument('--train_frequency', help='Train frequency', type=int, default=2)
+    parser.add_argument('--target_update_frequency', help='Target update frequency', type=int, default=500)
+    parser.add_argument('--num_iterations', help='Number of iterations', type=int, default=1e3)
     parser.add_argument('--env_name', help='Env name', type=str, default='CartPole-v0')
     args = parser.parse_args()
 
@@ -100,6 +102,8 @@ def main():
     config.tf_thread_count = args.tf_thread_count
     config.learning_rate = args.learning_rate
     config.train_frequency = args.train_frequency
+    config.num_iterations = args.num_iterations
+    config.target_update_frequency = args.target_update_frequency
 
     np.random.seed(42)
     tf.set_random_seed(7)

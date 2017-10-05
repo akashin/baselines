@@ -29,12 +29,12 @@ def wait_for(process):
     except plumbum.commands.processes.ProcessExecutionError as e:
         print("Process failed with {}".format(e))
 
-def run_doom(batch_size=32, learning_rate=1e-4, actor_count=1, tf_thread_count=8, 
+def run_doom_qdqn(batch_size=32, learning_rate=1e-4, actor_count=1, tf_thread_count=8, 
         target_update_frequency=500, num_iterations=None, env='ppaquette/BasicDoom-v0'):
     if num_iterations is None:
         num_iterations = 2500
 
-    print("Starting doom training")
+    print("Starting doom training with QDQN")
     f = python3["-m", "baselines.qdqn.experiments.doom",
             "--batch_size={}".format(batch_size),
             "--learning_rate={}".format(learning_rate),
@@ -44,6 +44,25 @@ def run_doom(batch_size=32, learning_rate=1e-4, actor_count=1, tf_thread_count=8
             "--num_iterations={}".format(num_iterations),
             "--cleanup={}".format(True),
             "--env_name={}".format(env)] & BG(stdout=sys.stdout, stderr=sys.stderr)
+    #taskset -cp $i $pid
+    wait_for(f)
+
+def run_doom_dqn(batch_size=32, learning_rate=1e-4, train_frequency=4,
+        worker_count=1, tf_thread_count=8,
+        target_update_frequency=500, num_iterations=None, env='ppaquette/BasicDoom-v0'):
+    if num_iterations is None:
+        num_iterations = 10000
+
+    print("Starting doom training with DQN")
+    f = python3["-m", "baselines.multi_deepq.experiments.doom",
+            "--batch_size={}".format(batch_size),
+            "--train_frequency={}".format(train_frequency),
+            "--learning_rate={}".format(learning_rate),
+            "--worker_count={}".format(args.thread_count),
+            "--target_update_frequency={}".format(target_update_frequency),
+            "--num_iterations={}".format(num_iterations),
+            "--tf_thread_count={}".format(args.tf_thread_count),
+            "--env_name={}".format(args.env)] & BG(stdout=sys.stdout, stderr=sys.stderr)
     #taskset -cp $i $pid
     wait_for(f)
 
@@ -58,13 +77,21 @@ def run_doom_sweep(args, learning_rates=None, batch_sizes=None):
 
     for batch_size in batch_sizes:
         for learning_rate in learning_rates:
-            run_doom(batch_size=batch_size,
-                    learning_rate=learning_rate,
-                    actor_count=args.actor_count,
-                    tf_thread_count=args.tf_thread_count,
-                    target_update_frequency=args.target_update_frequency,
-                    num_iterations=args.num_iterations,
-                    env=args.env)
+            if args.algo == "qdqn":
+                run_doom_qdqn(batch_size=batch_size,
+                        learning_rate=learning_rate,
+                        actor_count=args.actor_count,
+                        tf_thread_count=args.tf_thread_count,
+                        target_update_frequency=args.target_update_frequency,
+                        num_iterations=args.num_iterations,
+                        env=args.env)
+            elif args.algo == "dqn":
+                run_doom_dqn(batch_size=batch_size,
+                        learning_rate=learning_rate,
+                        tf_thread_count=args.tf_thread_count,
+                        target_update_frequency=args.target_update_frequency,
+                        num_iterations=args.num_iterations,
+                        env=args.env)
 
 def run_atari(batch_size=32, learning_rate=1e-4, actor_count=1, tf_thread_count=8,
         target_update_frequency=1000, env='PongNoFrameskip-v4'):
@@ -106,7 +133,8 @@ def main():
     parser.add_argument("--tf_thread_count", type=int, default=8)
     parser.add_argument("--target_update_frequency", type=int, default=500)
     parser.add_argument("--num_iterations", type=int, default=None)
-    parser.add_argument("--env", type=str, default='Pong-v0')
+    parser.add_argument("--algo", type=str, default="QDQN")
+    parser.add_argument("--env", type=str, default="Pong-v0")
     args = parser.parse_args()
 
     atexit.register(cleanup_processes)
