@@ -45,6 +45,7 @@ def main():
     config.num_iterations = args.num_iterations
     config.queue_capacity = 2 ** 17
     config.exploration_schedule = "piecewise"
+    config.target_update_frequency = args.target_update_frequency
 
     ALGO = "QDQN"
     env_dir = "./results/{}".format(escaped(args.env_name))

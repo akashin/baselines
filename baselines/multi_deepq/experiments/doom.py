@@ -3,6 +3,8 @@ import gym
 import numpy as np
 import tensorflow as tf
 
+import os
+
 import threading
 
 from baselines import logger
@@ -36,7 +38,7 @@ class PreprocessImage(ObservationWrapper):
         self.crop = crop
 
         n_colors = 1 if self.grayscale else 3
-        self.observation_space = Box(0.0, 1.0, [height, width, n_colors])
+        self.observation_space = Box(0.0, 255.0, [height, width, n_colors])
 
     def _observation(self, img):
         """what happens to the observation"""
@@ -105,10 +107,12 @@ def main():
     config.num_iterations = args.num_iterations
     config.target_update_frequency = args.target_update_frequency
 
-    np.random.seed(42)
-    tf.set_random_seed(7)
+    np.random.seed(42 + config.seed)
+    tf.set_random_seed(7 + config.seed)
 
-    log_dir = "./results/DQN_SCALED_{}{}".format(escaped(args.env_name), config)
+    ALGO = "DQN"
+    env_dir = "./results/{}".format(escaped(args.env_name))
+    log_dir = os.path.join(env_dir, "{}{}".format(ALGO, config))
     logger.configure(dir=log_dir)
     print("Running training with arguments: {} and log_dir: {}".format(args, log_dir))
 
@@ -118,7 +122,7 @@ def main():
 
     workers = []
     for i in range(args.worker_count):
-        workers.append(Worker(i == 0, make_env(args.env_name, i), model, config, should_render=False))
+        workers.append(Worker(i == 0, make_env(args.env_name, i + config.seed), model, config, should_render=False))
         # workers.append(StupidWorker(i == 0, make_env(args.env_name, i), model))
 
     with U.make_session(args.tf_thread_count) as session:

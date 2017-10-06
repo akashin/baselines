@@ -29,7 +29,7 @@ class PreprocessImage(ObservationWrapper):
         self.crop = crop
 
         n_colors = 1 if self.grayscale else 3
-        self.observation_space = Box(0.0, 1.0, [height, width, n_colors])
+        self.observation_space = Box(0.0, 255.0, [height, width, n_colors])
 
     def _observation(self, img):
         """what happens to the observation"""

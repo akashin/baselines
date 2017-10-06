@@ -28,6 +28,7 @@ class Config(object):
         self.tf_thread_count = 8
         self.train_frequency = 2
         self.target_update_frequency = 500
+        self.seed = 1
 
     def __repr__(self):
         s = ''
