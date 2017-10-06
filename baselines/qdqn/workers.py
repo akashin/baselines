@@ -90,6 +90,28 @@ class EventTimer(object):
             logger.record_tabular(key + "_time", value * 1.0 / self.visits[key])
 
 
+class TimeLiner:
+    _timeline_dict = None
+
+    def update_timeline(self, chrome_trace):
+        # convert crome trace to python dict
+        chrome_trace_dict = json.loads(chrome_trace)
+        # for first run store full trace
+        if self._timeline_dict is None:
+            self._timeline_dict = chrome_trace_dict
+        # for other - update only time consumption, not definitions
+        else:
+            for event in chrome_trace_dict['traceEvents']:
+                # events time consumption started with 'ts' prefix
+                if 'ts' in event:
+                    self._timeline_dict['traceEvents'].append(event)
+
+    def save(self, f_name):
+        with open(f_name, 'w') as f:
+            json.dump(self._timeline_dict, f)
+
+
+
 class Actor(object):
     def __init__(self, index, is_chief, env, model, queue, config, logger, should_render=True):
         self.config = config
@@ -153,7 +175,7 @@ class Actor(object):
             if coord.should_stop():
                 break
 
-            if t % 100 == 0:
+            if t % 10 == 0:
                 global_step = session.run(self.global_step)
                 exploration_value = self.exploration.value(global_step)
 
@@ -202,27 +224,6 @@ class Actor(object):
                 event_timer.print_averages(self.logger)
                 self.logger.dump_tabular()
 
-class TimeLiner:
-    _timeline_dict = None
-
-    def update_timeline(self, chrome_trace):
-        # convert crome trace to python dict
-        chrome_trace_dict = json.loads(chrome_trace)
-        # for first run store full trace
-        if self._timeline_dict is None:
-            self._timeline_dict = chrome_trace_dict
-        # for other - update only time consumption, not definitions
-        else:
-            for event in chrome_trace_dict['traceEvents']:
-                # events time consumption started with 'ts' prefix
-                if 'ts' in event:
-                    self._timeline_dict['traceEvents'].append(event)
-
-    def save(self, f_name):
-        with open(f_name, 'w') as f:
-            json.dump(self._timeline_dict, f)
-
-
 class Trainer(object):
     def __init__(self, config, actor_queue, learner_queue, observation_space, action_space,
             logger):
@@ -232,13 +233,13 @@ class Trainer(object):
 
         self.batch_size = config.batch_size
         self.replay_buffer = ReplayBuffer(config.replay_buffer_size)
-        self.enqueue_thread_count = 2
+        self.enqueue_thread_count = 1
         self.log_frequency = 50
 
         self.target_occupancy = 15000 // self.batch_size
-        self.dequeue_size = 128
-        self.enqueue_size = 128 * 2
-        self.min_replay_buffer_size = 1000
+        self.dequeue_size = 128 # in samples.
+        self.enqueue_size = 128 / 2 # in batches.
+        self.min_replay_buffer_size = 10000 # in samples.
 
         def add_data_to_replay(obs_t_inputs, actions, rewards, obs_tp1_inputs, dones, global_steps):
             for i in range(len(rewards)):
@@ -300,14 +301,14 @@ class Learner(object):
         self.save_path = save_path
         self.batch_size = config.batch_size
 
-        queue_size_op = self.queue.size()
-        self.queue_size = U.function([], queue_size_op)
-
         with tf.device('/cpu:0'):
             self.global_step = tf.train.create_global_step()
             self.update_global_step = tf.assign_add(self.global_step, 1)
 
         with tf.device('/gpu:0'):
+            # queue_size_op = self.queue.size()
+            # self.queue_size = U.function([], queue_size_op)
+
             dequeue_op = self.queue.get()
             self.act, self.train, self.update_target, self.debug = qdqn.build_train(
                     make_obs_ph=lambda name: U.Uint8Input(observation_space.shape, name=name),

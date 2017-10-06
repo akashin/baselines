@@ -31,6 +31,8 @@ def main():
     parser.add_argument('--actor_count', help='Worker count', type=int, default=1)
     parser.add_argument('--tf_thread_count', help='TensorFlow threads count', type=int, default=8)
     parser.add_argument('--learning_rate', help='Learning rate', type=float, default=5e-4)
+    parser.add_argument('--num_iterations', help='Number of iterations', type=int, default='CartPole-v0')
+    parser.add_argument('--cleanup', help='Should cleanup', type=bool, default=True)
     parser.add_argument('--env_name', help='Env name', type=str, default='CartPole-v0')
     args = parser.parse_args()
 
@@ -39,6 +41,7 @@ def main():
     config.actor_count = args.actor_count
     config.tf_thread_count = args.tf_thread_count
     config.learning_rate = args.learning_rate
+    config.num_iterations = args.num_iterations
 
     ALGO = "QDQN"
     env_dir = "./results/{}".format(escaped(args.env_name))
@@ -48,7 +51,8 @@ def main():
 
     make_env_fn = lambda seed: make_env(args.env_name, seed)
 
-    train_qdqn(config=config, log_dir=log_dir, make_env=make_env_fn, model=linear_model)
+    train_qdqn(config=config, log_dir=log_dir, make_env=make_env_fn, model=linear_model,
+            cleanup=True)
 
 
 if __name__ == '__main__':

@@ -29,6 +29,21 @@ def wait_for(process):
     except plumbum.commands.processes.ProcessExecutionError as e:
         print("Process failed with {}".format(e))
 
+def run_cartpole_qdqn(batch_size=32, learning_rate=1e-4, actor_count=1, tf_thread_count=8,
+        target_update_frequency=500, num_iterations=None, env='ppaquette/BasicDoom-v0'):
+    print("Starting cartpole training with QDQN")
+    f = python3["-m", "baselines.qdqn.experiments.cartpole",
+            "--batch_size={}".format(batch_size),
+            "--learning_rate={}".format(learning_rate),
+            "--actor_count={}".format(actor_count),
+            "--tf_thread_count={}".format(tf_thread_count),
+            # "--target_update_frequency={}".format(target_update_frequency),
+            "--num_iterations={}".format(num_iterations),
+            "--cleanup={}".format(True),
+            "--env_name={}".format(env)] & BG(stdout=sys.stdout, stderr=sys.stderr)
+    #taskset -cp $i $pid
+    wait_for(f)
+
 def run_doom_qdqn(batch_size=32, learning_rate=1e-4, actor_count=1, tf_thread_count=8, 
         target_update_frequency=500, num_iterations=None, env='ppaquette/BasicDoom-v0'):
     if num_iterations is None:
@@ -143,6 +158,10 @@ def main():
 
     # Don't use GPU.
     # local.env["CUDA_VISIBLE_DEVICES"] = ""
+
+    if 'CartPole' in args.env:
+        run_cartpole_qdqn(args)
+        return
 
     if 'ppaquette' in args.env:
         run_doom_sweep(args)
