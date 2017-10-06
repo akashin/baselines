@@ -43,7 +43,7 @@ class Config(object):
         self.target_update_frequency = 500
         self.params_update_frequency = 100
         self.queue_capacity = 2 ** 17
-        self.replay_buffer_size = 50000
+        self.replay_buffer_size = 100000
 
     def __repr__(self):
         s = ''
@@ -234,12 +234,13 @@ class Trainer(object):
         self.batch_size = config.batch_size
         self.replay_buffer = ReplayBuffer(config.replay_buffer_size)
         self.enqueue_thread_count = 1
-        self.log_frequency = 50
+        self.log_frequency = 10
 
         self.target_occupancy = 15000 // self.batch_size
         self.dequeue_size = 128 # in samples.
-        self.enqueue_size = 128 / 2 # in batches.
-        self.min_replay_buffer_size = 10000 # in samples.
+        # self.enqueue_size = 128 / 2 # in batches.
+        self.enqueue_size = 64 # in batches.
+        self.min_replay_buffer_size = 1000 # in samples.
 
         def add_data_to_replay(obs_t_inputs, actions, rewards, obs_tp1_inputs, dones, global_steps):
             for i in range(len(rewards)):
@@ -280,13 +281,14 @@ class Trainer(object):
             if len(self.replay_buffer) >= self.min_replay_buffer_size:
                 queue_size = self.learner_queue_size(session=session)
                 sample_now = min(max(0, self.target_occupancy - queue_size), self.enqueue_size)
-                for i in range(sample_now // (self.enqueue_thread_count) + 1):
+                for i in range(int(sample_now // self.enqueue_thread_count)):
                     self.enqueue(session=session)
 
                 if should_profile: event_timer.measure('enqueue')
 
             event_timer.stop()
             if should_profile:
+                self.logger.record_tabular("replay_buffer_size", len(self.replay_buffer))
                 self.logger.record_tabular("actor_queue_size", self.actor_queue_size(session=session))
                 self.logger.record_tabular("learner_queue_size", self.learner_queue_size(session=session))
                 event_timer.print_shares(self.logger)
@@ -306,8 +308,8 @@ class Learner(object):
             self.update_global_step = tf.assign_add(self.global_step, 1)
 
         with tf.device('/gpu:0'):
-            # queue_size_op = self.queue.size()
-            # self.queue_size = U.function([], queue_size_op)
+            queue_size_op = self.queue.size()
+            self.queue_size = U.function([], queue_size_op)
 
             dequeue_op = self.queue.get()
             self.act, self.train, self.update_target, self.debug = qdqn.build_train(
