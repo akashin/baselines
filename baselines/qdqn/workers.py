@@ -132,10 +132,10 @@ class Actor(object):
                     learner_scope="learner",
                     reuse=False)
 
-            obs_t_input = tf.placeholder(tf.int8, env.observation_space.shape, name="obs_t")
+            obs_t_input = tf.placeholder(tf.uint8, env.observation_space.shape, name="obs_t")
             act_t_ph = tf.placeholder(tf.int32, env.action_space.shape, name="action")
             rew_t_ph = tf.placeholder(tf.float32, [], name="reward")
-            obs_tp1_input = tf.placeholder(tf.int8, env.observation_space.shape, name="obs_tp1")
+            obs_tp1_input = tf.placeholder(tf.uint8, env.observation_space.shape, name="obs_tp1")
             done_mask_ph = tf.placeholder(tf.float32, [], name="done")
             global_step_ph = tf.placeholder(tf.int32, [], name="sample_global_step")
             enqueue_op = queue.enqueue(
@@ -259,7 +259,7 @@ class Trainer(object):
             add_data_to_replay_op = tf.py_func(add_data_to_replay, dequeue_op, [], stateful=True)
             self.add_data_to_replay = U.function([], add_data_to_replay_op)
 
-            self.get_data_from_replay = tf.py_func(get_data_from_replay, [], [tf.int8, tf.int32, tf.float32, tf.int8, tf.float32], stateful=True)
+            self.get_data_from_replay = tf.py_func(get_data_from_replay, [], [tf.uint8, tf.int32, tf.float32, tf.uint8, tf.float32], stateful=True)
             enqueue_ops = []
             for i in range(self.enqueue_thread_count):
                 enqueue_ops.append(learner_queue.put(self.get_data_from_replay))

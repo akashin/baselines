@@ -46,7 +46,7 @@ class PreprocessImage(ObservationWrapper):
         img = imresize(img, self.img_size)
         if self.grayscale:
             img = img.mean(-1, keepdims=True)
-        img = img.astype('int8')
+        img = img.astype('uint8')
         # img = np.transpose(img, (2, 0, 1))  # reshape from (h,w,colors) to (colors,h,w)
         # img = img.astype('float32') / 255.
         # img = np.squeeze(img)

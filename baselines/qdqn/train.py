@@ -51,12 +51,12 @@ def train_qdqn(config, log_dir, make_env, model, cleanup=False):
     env.close()
 
     actor_queue = tf.FIFOQueue(capacity=config.queue_capacity,
-            dtypes=[tf.int8, tf.int32, tf.float32, tf.int8, tf.float32, tf.int32],
+            dtypes=[tf.uint8, tf.int32, tf.float32, tf.uint8, tf.float32, tf.int32],
             shapes=[observation_space.shape, action_space.shape, [], observation_space.shape, [], []])
 
     batch_shape = [config.batch_size]
     learner_queue = StagingArea(
-            dtypes=[tf.int8, tf.int32, tf.float32, tf.int8, tf.float32],
+            dtypes=[tf.uint8, tf.int32, tf.float32, tf.uint8, tf.float32],
             shapes=[
                 batch_shape + list(observation_space.shape),
                 batch_shape + list(action_space.shape),
