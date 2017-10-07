@@ -371,7 +371,7 @@ class Learner(object):
         model_dir = "model-{}".format(state["num_iters"])
         U.save_state(os.path.join(path, model_dir, "saved"), session=session)
         relatively_safe_pickle_dump(state, os.path.join(path, 'training_state.pkl.zip'), compression=True)
-        relatively_safe_pickle_dump(state["monitor_state"], os.path.join(path, 'monitor_state.pkl'))
+        # relatively_safe_pickle_dump(state["monitor_state"], os.path.join(path, 'monitor_state.pkl'))
         logger.log("Saved model in {} seconds\n".format(time.time() - start_time))
 
     def run(self, session, coord):
