@@ -38,10 +38,10 @@ class Config(object):
         # self.num_iterations = 50000
         self.num_iterations = 2e7
         self.exploration_schedule = "linear"
-        self.learning_rate = 5e-3
+        self.learning_rate = 1e-4
         self.tf_thread_count = 8
-        self.target_update_frequency = 500
-        self.params_update_frequency = 100
+        self.target_update_frequency = 100
+        self.params_update_frequency = 500
         self.queue_capacity = 2 ** 17
         self.replay_buffer_size = 100000
 
@@ -113,29 +113,30 @@ class TimeLiner:
 
 
 class Actor(object):
-    def __init__(self, index, is_chief, env, model, queue, config, logger, should_render=True):
+    def __init__(self, index, is_chief, env, model, queue, config, logger, episode_logger, should_render=False):
         self.config = config
         self.is_chief = is_chief
         self.env = env
         self.global_step = tf.train.get_global_step()
         self.should_render = should_render
         self.logger = logger
+        self.episode_logger = episode_logger
 
         self.log_frequency = 10
 
         with tf.device('/cpu:0'):
             self.act, self.update_params, self.debug = qdqn.build_act(
-                    make_obs_ph=lambda name: U.Uint8Input(env.observation_space.shape, name=name),
+                    make_obs_ph=lambda name: U.Uint8Input(self.env.observation_space.shape, name=name),
                     q_func=model,
-                    num_actions=env.action_space.n,
+                    num_actions=self.env.action_space.n,
                     scope="actor_{}".format(index),
                     learner_scope="learner",
                     reuse=False)
 
-            obs_t_input = tf.placeholder(tf.uint8, env.observation_space.shape, name="obs_t")
-            act_t_ph = tf.placeholder(tf.int32, env.action_space.shape, name="action")
+            obs_t_input = tf.placeholder(tf.uint8, self.env.observation_space.shape, name="obs_t")
+            act_t_ph = tf.placeholder(tf.int32, self.env.action_space.shape, name="action")
             rew_t_ph = tf.placeholder(tf.float32, [], name="reward")
-            obs_tp1_input = tf.placeholder(tf.uint8, env.observation_space.shape, name="obs_tp1")
+            obs_tp1_input = tf.placeholder(tf.uint8, self.env.observation_space.shape, name="obs_tp1")
             done_mask_ph = tf.placeholder(tf.float32, [], name="done")
             global_step_ph = tf.placeholder(tf.int32, [], name="sample_global_step")
             enqueue_op = queue.enqueue(
@@ -160,8 +161,10 @@ class Actor(object):
         else:
             raise ValueError("Bad exploration schedule")
 
+
     def run(self, session, coord):
         episode_rewards = [0.0]
+        episode_length = 0
         obs = self.env.reset()
         done = False
 
@@ -192,10 +195,19 @@ class Actor(object):
             self.enqueue(obs, action, rew, new_obs, float(done), global_step, session=session)
             obs = new_obs
 
+            episode_length += 1
             episode_rewards[-1] += rew
             if done:
+                self.episode_logger.record_tabular("step", t)
+                self.episode_logger.record_tabular("global_step", global_step)
+                self.episode_logger.record_tabular("reward", episode_rewards[-1])
+                self.episode_logger.record_tabular("length", episode_length)
+                self.episode_logger.record_tabular("end_time", timer() - start_time)
+                self.episode_logger.dump_tabular()
+
                 obs = self.env.reset()
                 episode_rewards.append(0)
+                episode_length = 0
 
             event_timer.measure('queue')
 
@@ -213,7 +225,7 @@ class Actor(object):
             event_timer.stop()
 
             if self.is_chief and done and len(episode_rewards) % self.log_frequency == 0:
-                self.logger.record_tabular("steps", t)
+                self.logger.record_tabular("step", t)
                 self.logger.record_tabular("global_step", global_step)
                 self.logger.record_tabular("episodes", len(episode_rewards))
                 self.logger.record_tabular("mean episode reward", round(np.mean(episode_rewards[-101:-1]), 1))
@@ -233,12 +245,10 @@ class Trainer(object):
 
         self.batch_size = config.batch_size
         self.replay_buffer = ReplayBuffer(config.replay_buffer_size)
-        self.enqueue_thread_count = 1
-        self.log_frequency = 10
+        self.log_frequency = 100
 
         self.target_occupancy = 15000 // self.batch_size
         self.dequeue_size = 128 # in samples.
-        # self.enqueue_size = 128 / 2 # in batches.
         self.enqueue_size = 64 # in batches.
         self.min_replay_buffer_size = 1000 # in samples.
 
@@ -259,11 +269,9 @@ class Trainer(object):
             add_data_to_replay_op = tf.py_func(add_data_to_replay, dequeue_op, [], stateful=True)
             self.add_data_to_replay = U.function([], add_data_to_replay_op)
 
-            self.get_data_from_replay = tf.py_func(get_data_from_replay, [], [tf.uint8, tf.int32, tf.float32, tf.uint8, tf.float32], stateful=True)
-            enqueue_ops = []
-            for i in range(self.enqueue_thread_count):
-                enqueue_ops.append(learner_queue.put(self.get_data_from_replay))
-            self.enqueue = U.function([], tf.group(*enqueue_ops))
+            self.get_data_from_replay = tf.py_func(get_data_from_replay, [],
+                    [tf.uint8, tf.int32, tf.float32, tf.uint8, tf.float32], stateful=True)
+            self.enqueue = U.function([], learner_queue.put(self.get_data_from_replay))
 
 
     def run(self, session, coord):
@@ -281,7 +289,7 @@ class Trainer(object):
             if len(self.replay_buffer) >= self.min_replay_buffer_size:
                 queue_size = self.learner_queue_size(session=session)
                 sample_now = min(max(0, self.target_occupancy - queue_size), self.enqueue_size)
-                for i in range(int(sample_now // self.enqueue_thread_count)):
+                for i in range(int(sample_now)):
                     self.enqueue(session=session)
 
                 if should_profile: event_timer.measure('enqueue')
@@ -363,7 +371,7 @@ class Learner(object):
         model_dir = "model-{}".format(state["num_iters"])
         U.save_state(os.path.join(path, model_dir, "saved"), session=session)
         relatively_safe_pickle_dump(state, os.path.join(path, 'training_state.pkl.zip'), compression=True)
-        # relatively_safe_pickle_dump(state["monitor_state"], os.path.join(path, 'monitor_state.pkl'))
+        relatively_safe_pickle_dump(state["monitor_state"], os.path.join(path, 'monitor_state.pkl'))
         logger.log("Saved model in {} seconds\n".format(time.time() - start_time))
 
     def run(self, session, coord):

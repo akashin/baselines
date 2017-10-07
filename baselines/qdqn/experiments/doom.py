@@ -18,7 +18,6 @@ from scipy.misc import imresize
 from gym.core import ObservationWrapper
 from gym.spaces.box import Box
 
-
 class PreprocessImage(ObservationWrapper):
     def __init__(self, env, height=64, width=64, grayscale=True,
             crop=lambda img: img):
@@ -68,9 +67,7 @@ def make_env(env_name, seed):
 
         return ScaleRewardEnv(env, scale)
 
-    # env = ExternalProcess(_make_env)
-    env = _make_env()
-    return env
+    return _make_env()
 
 
 def escaped(env_name):

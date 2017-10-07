@@ -19,6 +19,11 @@ def create_logger(log_dir):
             [logger.make_output_format(f, log_dir) for f in logger.LOG_OUTPUT_FORMATS]
             )
 
+def create_json_logger(log_dir):
+    return logger.Logger(log_dir,
+            [logger.make_output_format(f, log_dir) for f in ['json']]
+            )
+
 def learner_dir(base_dir):
     return os.path.join(base_dir, "learner")
 
@@ -91,9 +96,8 @@ def train_qdqn(config, log_dir, make_env, model, cleanup=False):
             actor_queue,
             config,
             create_actor_logger(log_dir, i),
+            create_json_logger(os.path.join(actor_dir(log_dir, i), 'episodes')),
             should_render=False,))
-
-        # workers.append(StupidWorker(i == 0, make_env(i), model))
 
     with U.make_session(config.tf_thread_count) as session:
         U.initialize(session=session)
