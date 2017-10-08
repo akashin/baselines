@@ -375,7 +375,8 @@ def build_train(make_obs_ph, q_func, num_actions, optimizer, train_inputs=None,
             obs_t_input_op = obs_t_input.get()
             obs_tp1_input_op = obs_tp1_input.get()
 
-        importance_weights_ph = tf.placeholder(tf.float32, [None], name="weight")
+        # importance_weights_ph = tf.placeholder(tf.float32, [None], name="weight")
+        importance_weights_ph = tf.ones(rew_t_ph.get_shape(), dtype=tf.float32, name="weight")
 
         # q network evaluation
         q_t = q_func(obs_t_input_op, num_actions, scope="q_func", reuse=True)  # reuse parameters from act
@@ -414,9 +415,6 @@ def build_train(make_obs_ph, q_func, num_actions, optimizer, train_inputs=None,
         else:
             optimize_expr = optimizer.minimize(weighted_error, var_list=q_func_vars)
 
-        grads = optimizer.compute_gradients(weighted_error, var_list=q_func_vars)
-        gradients_norm = tf.norm([tf.norm(g) for (g, var) in grads])
-
         # update_target_fn will be called periodically to copy Q network to target Q network
         update_target_expr = []
         for var, var_target in zip(sorted(q_func_vars, key=lambda v: v.name),
@@ -435,11 +433,11 @@ def build_train(make_obs_ph, q_func, num_actions, optimizer, train_inputs=None,
                 obs_tp1_input,
                 done_mask_ph,
             ]
-        inputs.append(importance_weights_ph)
+        # inputs.append(importance_weights_ph)
 
         train = U.function(
             inputs=inputs,
-            outputs=[td_error, gradients_norm],
+            outputs=[td_error],
             updates=[optimize_expr]
         )
         update_target = U.function([], [], updates=[update_target_expr])

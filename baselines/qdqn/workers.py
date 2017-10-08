@@ -250,7 +250,7 @@ class Trainer(object):
 
         self.target_occupancy = 20000 // self.batch_size
         self.dequeue_size = 128 # in samples.
-        self.enqueue_size = 64 # in batches.
+        self.enqueue_size = 128 # in batches.
         self.min_replay_buffer_size = 1000 # in samples.
 
         def add_data_to_replay(obs_t_inputs, actions, rewards, obs_tp1_inputs, dones, global_steps):
@@ -272,7 +272,6 @@ class Trainer(object):
 
         with tf.device('/gpu:0'):
             self.learner_queue_size = U.function([], learner_queue.size())
-            self.learner_queue_put = learner_queue.put(self.get_data_from_replay)
             self.enqueue = U.function([], learner_queue.put(self.get_data_from_replay))
 
     def run(self, session, coord):
@@ -384,7 +383,6 @@ class Learner(object):
         start_time = timer()
         event_timer = EventTimer()
 
-        gradients = []
         td_errors = []
 
         many_runs_timeline = TimeLiner()
@@ -413,9 +411,9 @@ class Learner(object):
             if should_profile: event_timer.start()
 
             # Minimize the error in Bellman's equation on a batch sampled from replay buffer.
-            td_error, grad_norm = self.train(np.ones(self.batch_size),
-                    session=session, options=options, run_metadata=run_metadata)
-            gradients.append(grad_norm)
+            td_error = self.train(session=session, options=options, run_metadata=run_metadata)
+            # td_error = self.train(np.ones(self.batch_size),
+                    # session=session, options=options, run_metadata=run_metadata)
             td_errors.append(np.mean(td_error))
 
             if should_profile: event_timer.measure('train')
@@ -439,9 +437,7 @@ class Learner(object):
                 self.logger.record_tabular("queue_size", self.queue_size(session=session))
                 self.logger.record_tabular("batch_max_td_error", np.max(td_error))
                 self.logger.record_tabular("batch_min_td_error", np.min(td_error))
-                self.logger.record_tabular("mean gradient", round(np.mean(gradients[-101:-1]), 5))
                 self.logger.record_tabular("mean td_error", round(np.mean(td_errors[-101:-1]), 5))
-                # self.logger.record_tabular("td_error", str(td_error))
                 event_timer.print_shares(self.logger)
                 event_timer.print_averages(self.logger)
                 self.logger.dump_tabular()
