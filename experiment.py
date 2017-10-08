@@ -5,7 +5,7 @@ import logging
 from plumbum import local
 from plumbum import BG
 from plumbum import cli
-from plumbum.cmd import kill, python3
+from plumbum.cmd import kill, python3, pkill
 import plumbum.commands.processes
 
 import sys
@@ -13,6 +13,8 @@ import sys
 import atexit
 
 import argparse
+
+import time
 
 processes = []
 def cleanup_processes():
@@ -81,34 +83,42 @@ def run_doom_dqn(batch_size=32, learning_rate=1e-4, train_frequency=4,
     #taskset -cp $i $pid
     wait_for(f)
 
-def run_doom_sweep(args, learning_rates=None, batch_sizes=None):
+def run_doom_sweep(args, learning_rates=None, batch_sizes=None,
+        target_update_frequencies=None):
     if not learning_rates:
         learning_rates = [args.learning_rate]
 
     if not batch_sizes:
         batch_sizes = [args.batch_size]
 
-    print("Running doom sweep with {} parameter(s)".format(len(learning_rates) * len(batch_sizes)))
+    if not target_update_frequencies:
+        target_update_frequencies = [args.target_update_frequency]
+
+    print("Running doom sweep with {} parameter(s)".format(len(learning_rates) * len(batch_sizes) * len(target_update_frequencies)))
 
     for batch_size in batch_sizes:
         for learning_rate in learning_rates:
-            if args.algo == "qdqn":
-                run_doom_qdqn(batch_size=batch_size,
-                        learning_rate=learning_rate,
-                        actor_count=args.actor_count,
-                        tf_thread_count=args.tf_thread_count,
-                        target_update_frequency=args.target_update_frequency,
-                        num_iterations=args.num_iterations,
-                        env=args.env)
-            elif args.algo == "dqn":
-                run_doom_dqn(batch_size=batch_size,
-                        learning_rate=learning_rate,
-                        tf_thread_count=args.tf_thread_count,
-                        target_update_frequency=args.target_update_frequency,
-                        num_iterations=args.num_iterations,
-                        env=args.env)
-            else:
-                raise ValueError("Invalid algo: {}".format(args.algo))
+            for target_update_frequency in target_update_frequencies:
+                if args.algo == "qdqn":
+                    run_doom_qdqn(batch_size=batch_size,
+                            learning_rate=learning_rate,
+                            actor_count=args.actor_count,
+                            tf_thread_count=args.tf_thread_count,
+                            target_update_frequency=target_update_frequency,
+                            num_iterations=args.num_iterations,
+                            env=args.env)
+                elif args.algo == "dqn":
+                    run_doom_dqn(batch_size=batch_size,
+                            learning_rate=learning_rate,
+                            tf_thread_count=args.tf_thread_count,
+                            target_update_frequency=target_update_frequency,
+                            num_iterations=args.num_iterations,
+                            env=args.env)
+                else:
+                    raise ValueError("Invalid algo: {}".format(args.algo))
+
+            pkill["-9", "-f", "doom"]
+            time.sleep(3)
 
 def run_atari(batch_size=32, learning_rate=1e-4, actor_count=1, tf_thread_count=8,
         target_update_frequency=1000, env='PongNoFrameskip-v4'):
@@ -168,8 +178,9 @@ def main():
 
         # run_doom_sweep(
                 # args,
-                # batch_sizes=[32, 64, 128, 256],
-                # learning_rates=[1e-4, 5e-4, 1e-3, 5e-3, 1e-2])
+                # batch_sizes=[32, 64, 128],
+                # learning_rates=[1e-4, 5e-4, 1e-3],
+                # target_update_frequencies=[50, 100, 200, 400])
     else:
         run_atari_sweep(args)
 

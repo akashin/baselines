@@ -81,7 +81,6 @@ def train_qdqn(config, log_dir, make_env, model, cleanup=False):
             learner_queue,
             config,
             create_learner_logger(log_dir))
-    workers.append(learner)
 
     trainer = Trainer(config, actor_queue, learner_queue, observation_space, action_space,
             create_trainer_logger(log_dir))
@@ -111,4 +110,10 @@ def train_qdqn(config, log_dir, make_env, model, cleanup=False):
             thread.start()
             threads.append(thread)
 
-        coord.join(threads)
+        learner.run(session, coord)
+        actor_queue.close()
+
+        try:
+            coord.join(threads, stop_grace_period_secs=10)
+        except RuntimeError as e:
+            print("Failed to join threads: {}".format(e))

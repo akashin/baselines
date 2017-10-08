@@ -41,9 +41,9 @@ class Config(object):
         self.learning_rate = 1e-4
         self.tf_thread_count = 8
         self.target_update_frequency = 100
-        self.params_update_frequency = 500
+        self.params_update_frequency = 1000
         self.queue_capacity = 2 ** 17
-        self.replay_buffer_size = 100000
+        self.replay_buffer_size = 200000
 
     def __repr__(self):
         s = ''
@@ -236,6 +236,7 @@ class Actor(object):
                 event_timer.print_averages(self.logger)
                 self.logger.dump_tabular()
 
+
 class Trainer(object):
     def __init__(self, config, actor_queue, learner_queue, observation_space, action_space,
             logger):
@@ -247,7 +248,7 @@ class Trainer(object):
         self.replay_buffer = ReplayBuffer(config.replay_buffer_size)
         self.log_frequency = 100
 
-        self.target_occupancy = 15000 // self.batch_size
+        self.target_occupancy = 20000 // self.batch_size
         self.dequeue_size = 128 # in samples.
         self.enqueue_size = 64 # in batches.
         self.min_replay_buffer_size = 1000 # in samples.
@@ -259,9 +260,6 @@ class Trainer(object):
         def get_data_from_replay():
             return self.replay_buffer.sample(self.batch_size)
 
-        with tf.device('/gpu:0'):
-            self.learner_queue_size = U.function([], learner_queue.size())
-
         with tf.device('/cpu:0'):
             self.actor_queue_size = U.function([], actor_queue.size())
 
@@ -271,8 +269,11 @@ class Trainer(object):
 
             self.get_data_from_replay = tf.py_func(get_data_from_replay, [],
                     [tf.uint8, tf.int32, tf.float32, tf.uint8, tf.float32], stateful=True)
-            self.enqueue = U.function([], learner_queue.put(self.get_data_from_replay))
 
+        with tf.device('/gpu:0'):
+            self.learner_queue_size = U.function([], learner_queue.size())
+            self.learner_queue_put = learner_queue.put(self.get_data_from_replay)
+            self.enqueue = U.function([], learner_queue.put(self.get_data_from_replay))
 
     def run(self, session, coord):
         event_timer = EventTimer()
@@ -283,7 +284,11 @@ class Trainer(object):
             should_profile = t > 0 and t % self.log_frequency == 0
             if should_profile: event_timer.start()
 
-            self.add_data_to_replay(session=session)
+            try:
+                self.add_data_to_replay(session=session)
+            except Exception as e:
+                print("Failed to add data to replay: {}".format(e))
+                break
             if should_profile: event_timer.measure('dequeue')
 
             if len(self.replay_buffer) >= self.min_replay_buffer_size:
@@ -302,6 +307,7 @@ class Trainer(object):
                 event_timer.print_shares(self.logger)
                 event_timer.print_averages(self.logger)
                 self.logger.dump_tabular()
+
 
 class Learner(object):
     def __init__(self, save_path, observation_space, action_space, model, queue, config, logger):
