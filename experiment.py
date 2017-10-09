@@ -179,8 +179,9 @@ def main():
         # run_doom_sweep(
                 # args,
                 # batch_sizes=[32, 64, 128],
-                # learning_rates=[1e-4, 5e-4, 1e-3],
-                # target_update_frequencies=[50, 100, 200, 400])
+                # batch_sizes=[128],
+                # learning_rates=[1e-4],
+                # target_update_frequencies=[400])
     else:
         run_atari_sweep(args)
 

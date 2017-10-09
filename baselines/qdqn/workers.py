@@ -41,14 +41,16 @@ class Config(object):
         self.learning_rate = 1e-4
         self.tf_thread_count = 8
         self.target_update_frequency = 100
-        self.params_update_frequency = 1000
+        self.params_update_frequency = 20
         self.queue_capacity = 2 ** 17
         self.replay_buffer_size = 200000
+        self.parallel_enqueue_count = 2
 
     def __repr__(self):
         s = ''
         for k, v in sorted(self.__dict__.items()):
-            s += ',{}={}'.format(k, v)
+            if k not in ['gamma', 'tf_thread_count', 'queue_capacity']:
+                s += ',{}={}'.format(k, v)
         return s
 
 
@@ -133,6 +135,7 @@ class Actor(object):
                     learner_scope="learner",
                     reuse=False)
 
+        with tf.device('/cpu:0'):
             obs_t_input = tf.placeholder(tf.uint8, self.env.observation_space.shape, name="obs_t")
             act_t_ph = tf.placeholder(tf.int32, self.env.action_space.shape, name="action")
             rew_t_ph = tf.placeholder(tf.float32, [], name="reward")
@@ -252,6 +255,7 @@ class Trainer(object):
         self.dequeue_size = 128 # in samples.
         self.enqueue_size = 128 # in batches.
         self.min_replay_buffer_size = 1000 # in samples.
+        self.parallel_enqueue_count = config.parallel_enqueue_count
 
         def add_data_to_replay(obs_t_inputs, actions, rewards, obs_tp1_inputs, dones, global_steps):
             for i in range(len(rewards)):
@@ -272,7 +276,10 @@ class Trainer(object):
 
         with tf.device('/gpu:0'):
             self.learner_queue_size = U.function([], learner_queue.size())
-            self.enqueue = U.function([], learner_queue.put(self.get_data_from_replay))
+            enqueues = []
+            for _ in range(self.parallel_enqueue_count):
+                enqueues += [learner_queue.put(self.get_data_from_replay)]
+            self.enqueue = U.function([], tf.group(*enqueues))
 
     def run(self, session, coord):
         event_timer = EventTimer()
@@ -293,7 +300,7 @@ class Trainer(object):
             if len(self.replay_buffer) >= self.min_replay_buffer_size:
                 queue_size = self.learner_queue_size(session=session)
                 sample_now = min(max(0, self.target_occupancy - queue_size), self.enqueue_size)
-                for i in range(int(sample_now)):
+                for i in range(int(sample_now // self.parallel_enqueue_count + 1)):
                     self.enqueue(session=session)
 
                 if should_profile: event_timer.measure('enqueue')
