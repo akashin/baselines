@@ -120,7 +120,7 @@ def run_doom_sweep(args, learning_rates=None, batch_sizes=None,
             pkill["-9", "-f", "doom"]
             time.sleep(3)
 
-def run_atari(batch_size=32, learning_rate=1e-4, actor_count=1, tf_thread_count=8,
+def run_atari_qdqn(batch_size=32, learning_rate=1e-4, actor_count=1, tf_thread_count=8,
         target_update_frequency=1000, env='PongNoFrameskip-v4'):
     print("Starting Atari training")
     f = python3["-m", "baselines.qdqn.experiments.train_atari",
@@ -129,7 +129,20 @@ def run_atari(batch_size=32, learning_rate=1e-4, actor_count=1, tf_thread_count=
             "--actor_count={}".format(actor_count),
             "--tf_thread_count={}".format(tf_thread_count),
             "--target_update_frequency={}".format(target_update_frequency),
-            "--num_iterations={}".format(int(5e7)),
+            "--num_iterations={}".format(int(10e7)),
+            "--env_name={}".format(env)] & BG(stdout=sys.stdout, stderr=sys.stderr)
+    #taskset -cp $i $pid
+    wait_for(f)
+
+def run_atari_dqn(batch_size=32, learning_rate=1e-4, tf_thread_count=8,
+        target_update_frequency=1000, env='PongNoFrameskip-v4'):
+    print("Starting Atari training")
+    f = python3["-m", "baselines.qdqn.experiments.train_atari",
+            "--batch_size={}".format(batch_size),
+            "--learning_rate={}".format(learning_rate),
+            "--tf_thread_count={}".format(tf_thread_count),
+            "--target_update_frequency={}".format(target_update_frequency),
+            "--num_iterations={}".format(int(10e7)),
             "--env_name={}".format(env)] & BG(stdout=sys.stdout, stderr=sys.stderr)
     #taskset -cp $i $pid
     wait_for(f)
@@ -145,12 +158,21 @@ def run_atari_sweep(args, learning_rates=None, batch_sizes=None):
 
     for batch_size in batch_sizes:
         for learning_rate in learning_rates:
-            run_atari(batch_size=batch_size,
-                    learning_rate=learning_rate,
-                    actor_count=args.actor_count,
-                    tf_thread_count=args.tf_thread_count,
-                    target_update_frequency=args.target_update_frequency,
-                    env=args.env)
+            if args.algo == "qdqn":
+                run_atari_qdqn(batch_size=batch_size,
+                        learning_rate=learning_rate,
+                        actor_count=args.actor_count,
+                        tf_thread_count=args.tf_thread_count,
+                        target_update_frequency=args.target_update_frequency,
+                        env=args.env)
+            elif args.algo == "dqn":
+                run_atari_dqn(batch_size=batch_size,
+                        learning_rate=learning_rate,
+                        tf_thread_count=args.tf_thread_count,
+                        target_update_frequency=args.target_update_frequency,
+                        env=args.env)
+            else:
+                raise ValueError("Invalid algo: {}".format(args.algo))
 
 def main():
     parser = argparse.ArgumentParser()
