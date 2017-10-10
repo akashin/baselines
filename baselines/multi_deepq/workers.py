@@ -11,7 +11,7 @@ from baselines import logger
 
 from baselines import multi_deepq
 from baselines.multi_deepq.replay_buffer import ReplayBuffer
-from baselines.common.schedules import LinearSchedule
+from baselines.common.schedules import LinearSchedule, PiecewiseSchedule
 
 from collections import namedtuple, defaultdict
 
