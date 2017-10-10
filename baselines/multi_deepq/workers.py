@@ -109,7 +109,7 @@ class Worker(object):
             if t > 1000 and t % 500 == 0:
                 event_timer.start()
             # Take action and update exploration to the newest value
-            action = self.act(obs[None], update_eps=self.exploration.value(t), session=session)[0]
+            action = self.act(np.array(obs)[None], update_eps=self.exploration.value(t), session=session)[0]
             event_timer.measure('act')
             new_obs, rew, done, _ = self.env.step(action)
             event_timer.measure('step')
