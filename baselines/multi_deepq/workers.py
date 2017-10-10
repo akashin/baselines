@@ -21,7 +21,7 @@ class Config(object):
     def __init__(self):
         self.batch_size = 32
         self.gamma = 0.99
-        self.replay_size = 200000
+        self.replay_size = 370000
         self.num_iterations = 10000
         self.exploration_schedule = "linear"
         self.learning_rate = 5e-4
