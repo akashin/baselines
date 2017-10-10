@@ -137,7 +137,7 @@ def run_atari_qdqn(batch_size=32, learning_rate=1e-4, actor_count=1, tf_thread_c
 def run_atari_dqn(batch_size=32, learning_rate=1e-4, tf_thread_count=8,
         target_update_frequency=1000, worker_count=1, env='PongNoFrameskip-v4'):
     print("Starting Atari training")
-    f = python3["-m", "baselines.qdqn.experiments.train_atari",
+    f = python3["-m", "baselines.multi_deepq.experiments.train_atari",
             "--batch_size={}".format(batch_size),
             "--learning_rate={}".format(learning_rate),
             "--worker_count={}".format(worker_count),
