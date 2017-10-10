@@ -21,12 +21,12 @@ class Config(object):
     def __init__(self):
         self.batch_size = 32
         self.gamma = 0.99
-        self.replay_size = 50000
+        self.replay_size = 200000
         self.num_iterations = 10000
         self.learning_rate = 5e-4
         self.worker_count = 1
         self.tf_thread_count = 8
-        self.train_frequency = 2
+        self.train_frequency = 4
         self.target_update_frequency = 500
         self.seed = 1
 
