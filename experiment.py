@@ -142,6 +142,7 @@ def run_atari_dqn(batch_size=32, learning_rate=1e-4, tf_thread_count=8,
             "--learning_rate={}".format(learning_rate),
             "--worker_count={}".format(worker_count),
             "--tf_thread_count={}".format(tf_thread_count),
+            "--train_frequency={}".format(4),
             "--target_update_frequency={}".format(target_update_frequency),
             "--num_iterations={}".format(int(5e7)),
             "--env_name={}".format(env)] & BG(stdout=sys.stdout, stderr=sys.stderr)
