@@ -23,6 +23,7 @@ class Config(object):
         self.gamma = 0.99
         self.replay_size = 200000
         self.num_iterations = 10000
+        self.exploration_schedule = "linear"
         self.learning_rate = 5e-4
         self.worker_count = 1
         self.tf_thread_count = 8
@@ -94,9 +95,20 @@ class Worker(object):
 
         # Create the replay buffer
         self.replay_buffer = ReplayBuffer(config.replay_size)
-        # Create the schedule for exploration starting from 1 (every action is random) down to
-        # 0.02 (98% of actions are selected according to values predicted by the model).
-        self.exploration = LinearSchedule(schedule_timesteps=self.config.num_iterations / 4.0, initial_p=1.0, final_p=0.02)
+        if self.config.exploration_schedule == "linear":
+            # Create the schedule for exploration starting from 1 (every action is random) down to
+            # 0.02 (98% of actions are selected according to values predicted by the model).
+            self.exploration = LinearSchedule(
+                    schedule_timesteps=self.config.num_iterations / 4, initial_p=1.0, final_p=0.02)
+        elif self.config.exploration_schedule == "piecewise":
+            approximate_num_iters = self.config.num_iterations
+            self.exploration = PiecewiseSchedule([
+                (0, 1.0),
+                (approximate_num_iters / 50, 0.1),
+                (approximate_num_iters / 5, 0.01)
+            ], outside_value=0.01)
+        else:
+            raise ValueError("Bad exploration schedule")
 
     def run(self, session, coord):
         episode_rewards = [0.0]

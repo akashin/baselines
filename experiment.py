@@ -129,7 +129,7 @@ def run_atari_qdqn(batch_size=32, learning_rate=1e-4, actor_count=1, tf_thread_c
             "--actor_count={}".format(actor_count),
             "--tf_thread_count={}".format(tf_thread_count),
             "--target_update_frequency={}".format(target_update_frequency),
-            "--num_iterations={}".format(int(10e7)),
+            "--num_iterations={}".format(int(5e7)),
             "--env_name={}".format(env)] & BG(stdout=sys.stdout, stderr=sys.stderr)
     #taskset -cp $i $pid
     wait_for(f)
@@ -143,7 +143,7 @@ def run_atari_dqn(batch_size=32, learning_rate=1e-4, tf_thread_count=8,
             "--worker_count={}".format(worker_count),
             "--tf_thread_count={}".format(tf_thread_count),
             "--target_update_frequency={}".format(target_update_frequency),
-            "--num_iterations={}".format(int(10e7)),
+            "--num_iterations={}".format(int(5e7)),
             "--env_name={}".format(env)] & BG(stdout=sys.stdout, stderr=sys.stderr)
     #taskset -cp $i $pid
     wait_for(f)
