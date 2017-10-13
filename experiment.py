@@ -198,14 +198,13 @@ def main():
         return
 
     if 'ppaquette' in args.env:
-        run_doom_sweep(args)
+        # run_doom_sweep(args)
 
-        # run_doom_sweep(
-                # args,
-                # batch_sizes=[32, 64, 128],
-                # batch_sizes=[128],
-                # learning_rates=[1e-4],
-                # target_update_frequencies=[400])
+        run_doom_sweep(
+                args,
+                batch_sizes=[16, 32, 64, 128, 256],
+                learning_rates=[1e-4],
+                target_update_frequencies=[500])
     else:
         run_atari_sweep(args)
 
