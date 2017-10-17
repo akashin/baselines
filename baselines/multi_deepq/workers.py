@@ -11,7 +11,7 @@ from baselines import logger
 
 from baselines import multi_deepq
 from baselines.multi_deepq.replay_buffer import ReplayBuffer
-from baselines.common.schedules import LinearSchedule, PiecewiseSchedule
+from baselines.common.schedules import LinearSchedule, PiecewiseSchedule, ConstantSchedule
 
 from collections import namedtuple, defaultdict
 
@@ -95,7 +95,9 @@ class Worker(object):
 
         # Create the replay buffer
         self.replay_buffer = ReplayBuffer(config.replay_size)
-        if self.config.exploration_schedule == "linear":
+        if self.config.exploration_schedule == "constant":
+            self.exploration = ConstantSchedule(0.1)
+        elif self.config.exploration_schedule == "linear":
             # Create the schedule for exploration starting from 1 (every action is random) down to
             # 0.02 (98% of actions are selected according to values predicted by the model).
             self.exploration = LinearSchedule(

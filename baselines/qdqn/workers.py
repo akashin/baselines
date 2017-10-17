@@ -15,7 +15,7 @@ from baselines import logger
 
 from baselines import qdqn
 from baselines.qdqn.replay_buffer import ReplayBuffer
-from baselines.common.schedules import LinearSchedule, PiecewiseSchedule
+from baselines.common.schedules import LinearSchedule, PiecewiseSchedule, ConstantSchedule
 
 from collections import namedtuple, defaultdict
 
@@ -149,7 +149,9 @@ class Actor(object):
 
         self.max_iteration_count = self.config.num_iterations
 
-        if self.config.exploration_schedule == "linear":
+        if self.config.exploration_schedule == "constant":
+            self.exploration = ConstantSchedule(0.1)
+        elif self.config.exploration_schedule == "linear":
             # Create the schedule for exploration starting from 1 (every action is random) down to
             # 0.02 (98% of actions are selected according to values predicted by the model).
             self.exploration = LinearSchedule(

@@ -93,7 +93,7 @@ def main():
     config.learning_rate = args.learning_rate
     config.num_iterations = args.num_iterations
     config.queue_capacity = 2 ** 17
-    config.exploration_schedule = "linear"
+    config.exploration_schedule = "constant"
     config.target_update_frequency = args.target_update_frequency
 
     ALGO = "QDQN"

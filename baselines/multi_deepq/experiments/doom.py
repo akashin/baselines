@@ -106,6 +106,7 @@ def main():
     config.train_frequency = args.train_frequency
     config.num_iterations = args.num_iterations
     config.target_update_frequency = args.target_update_frequency
+    config.exploration_schedule = "constant"
 
     np.random.seed(42 + config.seed)
     tf.set_random_seed(7 + config.seed)
