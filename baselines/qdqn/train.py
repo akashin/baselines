@@ -14,6 +14,8 @@ from tensorflow.contrib.staging import StagingArea
 
 from baselines.qdqn.workers import Learner, Actor, Trainer
 
+from gym.wrappers import Monitor
+
 def create_logger(log_dir):
     return logger.Logger(log_dir,
             [logger.make_output_format(f, log_dir) for f in logger.LOG_OUTPUT_FORMATS]

@@ -13,7 +13,7 @@ from baselines.qdqn.wrappers import ExternalProcess
 from baselines.qdqn.train import train_qdqn
 
 
-from gym.wrappers import SkipWrapper
+from gym.wrappers import SkipWrapper, Monitor
 from scipy.misc import imresize
 from gym.core import ObservationWrapper
 from gym.spaces.box import Box
@@ -52,12 +52,17 @@ class ScaleRewardEnv(gym.RewardWrapper):
         return reward / self.scale
 
 
+def escaped(env_name):
+    return env_name.replace('/', '.')
+
+
 def make_env(env_name, seed):
     def _make_env():
         env_spec = gym.spec(env_name)
         env_spec.id = env_name.split('/')[1]
         env = env_spec.make()
-        env = SetResolution('160x120')(env)
+        env = Monitor(env, "/tmp/{}/{}".format(escaped(env_name), seed))
+        # env = SetResolution('160x120')(env)
         env = PreprocessImage((SkipWrapper(4)(ToDiscrete("minimal")(env))),
                 width=80, height=80)
 
@@ -68,10 +73,6 @@ def make_env(env_name, seed):
         return ScaleRewardEnv(env, scale)
 
     return _make_env()
-
-
-def escaped(env_name):
-    return env_name.replace('/', '.')
 
 
 def main():
